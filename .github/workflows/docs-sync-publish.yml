@@ -27,7 +27,20 @@ jobs:
         with:
           node-version: 22
 
+      - name: Check token availability
+        id: check-token
+        env:
+          OPENCLAW_DOCS_SYNC_TOKEN: ${{ secrets.OPENCLAW_DOCS_SYNC_TOKEN }}
+        run: |
+          if [ -z "${OPENCLAW_DOCS_SYNC_TOKEN}" ]; then
+            echo "OPENCLAW_DOCS_SYNC_TOKEN is not set; skipping docs sync."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Clone publish repo
+        if: steps.check-token.outputs.skip == 'false'
         env:
           OPENCLAW_DOCS_SYNC_TOKEN: ${{ secrets.OPENCLAW_DOCS_SYNC_TOKEN }}
         run: |
@@ -37,6 +50,7 @@ jobs:
             publish
 
       - name: Sync docs into publish repo
+        if: steps.check-token.outputs.skip == 'false'
         run: |
           node scripts/docs-sync-publish.mjs \
             --target "$GITHUB_WORKSPACE/publish" \
@@ -44,6 +58,7 @@ jobs:
             --source-sha "$GITHUB_SHA"
 
       - name: Commit publish repo sync
+        if: steps.check-token.outputs.skip == 'false'
         working-directory: publish
         run: |
           set -euo pipefail
