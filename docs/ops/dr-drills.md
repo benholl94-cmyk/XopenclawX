@@ -125,7 +125,7 @@ Run at least one drill per quarterly resilience review (see [Ops Review Cadence]
 
 **Target RTO:** 1 min
 
-1. Kill the gateway process:
+1. Simulate a hard crash (SIGKILL, intentional for this drill):
 
    ```bash
    pkill -9 -f openclaw-gateway

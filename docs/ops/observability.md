@@ -122,8 +122,9 @@ openclaw health --json
 ```bash
 #!/usr/bin/env bash
 # /etc/cron.d/openclaw-health — runs every 5 minutes
+# Requires: jq (apt install jq / brew install jq)
 RESULT=$(openclaw health --json 2>/dev/null)
-OK=$(echo "$RESULT" | node -e "process.stdin.resume(); let d=''; process.stdin.on('data',c=>d+=c); process.stdin.on('end',()=>{ try{process.stdout.write(JSON.parse(d).ok.toString())}catch{process.stdout.write('false')} })")
+OK=$(echo "$RESULT" | jq -r '.ok // false')
 if [ "$OK" != "true" ]; then
   # Send alert via your preferred channel (e.g., curl to a webhook, or openclaw message send)
   echo "OpenClaw health check failed" | mail -s "ALERT: OpenClaw down" ops@example.com

@@ -42,8 +42,10 @@ For structured postmortems, use the [Postmortem Template](./postmortem-template.
    systemctl --user restart openclaw-gateway
    # Docker
    docker compose up -d
-   # Manual (any platform)
-   pkill -9 -f openclaw-gateway || true
+   # Manual (any platform) — graceful shutdown first, force-kill if needed
+   pkill -15 -f openclaw-gateway || true
+   sleep 5
+   pkill -9 -f openclaw-gateway 2>/dev/null || true
    nohup openclaw gateway run --bind loopback --port 18789 --force \
      > /tmp/openclaw-gateway.log 2>&1 &
    ```

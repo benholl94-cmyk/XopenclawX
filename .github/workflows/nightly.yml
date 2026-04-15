@@ -12,7 +12,8 @@ name: Nightly
 
 on:
   schedule:
-    # 02:00 UTC every day
+    # 02:00 UTC daily — chosen to avoid overlap with the Dependabot daily
+    # update window (typically 05:00–08:00 UTC) and peak contributor hours.
     - cron: "0 2 * * *"
   workflow_dispatch:
     inputs:
