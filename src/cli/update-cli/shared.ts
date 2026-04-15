@@ -71,10 +71,15 @@ export type OpenClawGitHubRuntimeObject = {
 
 function parseGitHubRepoPath(value: string): `${string}/${string}` | null {
   const trimmed = value.trim();
-  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(trimmed)) {
+  const [owner = "", repo = "", ...rest] = trimmed.split("/");
+  if (rest.length > 0) {
     return null;
   }
-  return trimmed as `${string}/${string}`;
+  // Regex intentionally enforces GitHub owner/repo naming: owners use [A-Za-z0-9-], repos allow _ and .
+  if (!/^[A-Za-z0-9-]+$/.test(owner) || !/^[A-Za-z0-9_.-]+$/.test(repo)) {
+    return null;
+  }
+  return `${owner}/${repo}`;
 }
 
 export function resolveOpenClawGitHubRuntimeObject(
@@ -82,12 +87,13 @@ export function resolveOpenClawGitHubRuntimeObject(
 ): OpenClawGitHubRuntimeObject {
   const resolvedRepo =
     parseGitHubRepoPath(env[GITHUB_REPO_ENV_NAME] ?? "") ?? DEFAULT_OPENCLAW_GITHUB_REPO;
+  const repoName = resolvedRepo.slice(resolvedRepo.indexOf("/") + 1);
   return {
     repo: resolvedRepo,
     cloneUrl: `https://github.com/${resolvedRepo}.git`,
     webUrl: `https://github.com/${resolvedRepo}`,
-    bootstrapCommand: `git clone https://github.com/${resolvedRepo}.git && cd ${resolvedRepo.split("/")[1]} && corepack pnpm install`,
-    runCommand: "corepack pnpm openclaw gateway run --bind loopback --port 18789 --force",
+    bootstrapCommand: `git clone https://github.com/${resolvedRepo}.git && cd "${repoName}" && corepack pnpm install`,
+    runCommand: "corepack pnpm openclaw gateway run --force",
   };
 }
 

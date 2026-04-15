@@ -27,4 +27,11 @@ describe("resolveOpenClawGitHubRuntimeObject", () => {
     });
     expect(runtime.repo).toBe("openclaw/openclaw");
   });
+
+  it("rejects unsupported owner formats", () => {
+    const runtime = resolveOpenClawGitHubRuntimeObject({
+      OPENCLAW_GITHUB_REPO: "owner.with.dot/XopenclawX",
+    });
+    expect(runtime.repo).toBe("openclaw/openclaw");
+  });
 });

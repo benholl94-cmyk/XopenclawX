@@ -1,3 +1,4 @@
+import type { GatewayNodePlatformAllowlistValue } from "./gateway-node-platform-allowlist.js";
 import type { SecretInput } from "./types.secrets.js";
 
 export type GatewayBindMode = "auto" | "lan" | "loopback" | "custom" | "tailnet";
@@ -375,7 +376,7 @@ export type GatewayNodesConfig = {
    * Optional node platform allowlist for node.invoke command routing.
    * When set, nodes outside this list receive an empty command allowlist.
    */
-  platformAllowlist?: ("ios" | "ipados" | "android" | "macos" | "windows" | "linux")[];
+  platformAllowlist?: GatewayNodePlatformAllowlistValue[];
   /** Additional node.invoke commands to allow on the gateway. */
   allowCommands?: string[];
   /** Commands to deny even if they appear in the defaults or node claims. */

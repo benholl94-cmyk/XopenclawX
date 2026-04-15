@@ -1,3 +1,4 @@
+import { GATEWAY_NODE_PLATFORM_ALLOWLIST_VALUES } from "../config/gateway-node-platform-allowlist.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
   NODE_BROWSER_PROXY_COMMAND,
@@ -144,12 +145,14 @@ const DEVICE_FAMILY_TOKEN_RULES: ReadonlyArray<{
 
 const PLATFORM_ALLOWLIST_ID_MAP: Readonly<Record<string, Exclude<PlatformId, "unknown">>> = {
   ios: "ios",
+  // iPadOS nodes share the iOS command surface, so both map to iOS policy defaults.
   ipados: "ios",
   android: "android",
   macos: "macos",
   windows: "windows",
   linux: "linux",
 };
+const PLATFORM_ALLOWLIST_INPUT_SET = new Set<string>(GATEWAY_NODE_PLATFORM_ALLOWLIST_VALUES);
 
 function resolvePlatformIdByPrefix(value: string): Exclude<PlatformId, "unknown"> | undefined {
   for (const rule of PLATFORM_PREFIX_RULES) {
@@ -190,7 +193,11 @@ function normalizePlatformAllowlist(
   }
   const normalized = new Set<Exclude<PlatformId, "unknown">>();
   for (const raw of input) {
-    const platformId = PLATFORM_ALLOWLIST_ID_MAP[raw.trim().toLowerCase()];
+    const normalizedInput = raw.trim().toLowerCase();
+    if (!PLATFORM_ALLOWLIST_INPUT_SET.has(normalizedInput)) {
+      continue;
+    }
+    const platformId = PLATFORM_ALLOWLIST_ID_MAP[normalizedInput];
     if (platformId) {
       normalized.add(platformId);
     }

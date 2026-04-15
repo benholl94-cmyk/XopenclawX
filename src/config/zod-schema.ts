@@ -5,6 +5,7 @@ import {
   normalizeLowercaseStringOrEmpty,
   normalizeStringifiedOptionalString,
 } from "../shared/string-coerce.js";
+import { GATEWAY_NODE_PLATFORM_ALLOWLIST_VALUES } from "./gateway-node-platform-allowlist.js";
 import { ToolsSchema } from "./zod-schema.agent-runtime.js";
 import { AgentsSchema, AudioSchema, BindingsSchema, BroadcastSchema } from "./zod-schema.agents.js";
 import { ApprovalsSchema } from "./zod-schema.approvals.js";
@@ -873,18 +874,7 @@ export const OpenClawSchema = z
               })
               .strict()
               .optional(),
-            platformAllowlist: z
-              .array(
-                z.union([
-                  z.literal("ios"),
-                  z.literal("ipados"),
-                  z.literal("android"),
-                  z.literal("macos"),
-                  z.literal("windows"),
-                  z.literal("linux"),
-                ]),
-              )
-              .optional(),
+            platformAllowlist: z.array(z.enum(GATEWAY_NODE_PLATFORM_ALLOWLIST_VALUES)).optional(),
             allowCommands: z.array(z.string()).optional(),
             denyCommands: z.array(z.string()).optional(),
           })
