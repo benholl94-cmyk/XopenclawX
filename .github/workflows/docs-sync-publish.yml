@@ -39,7 +39,7 @@ jobs:
         if: steps.token_check.outputs.available == 'true'
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: "22.18.0"
 
       - name: Clone publish repo
         if: steps.token_check.outputs.available == 'true'
