@@ -12,7 +12,20 @@ jobs:
   dispatch-translate:
     runs-on: ubuntu-latest
     steps:
+      - name: Check docs sync token
+        id: token_check
+        env:
+          GH_TOKEN: ${{ secrets.OPENCLAW_DOCS_SYNC_TOKEN }}
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping docs release locale dispatch because OPENCLAW_DOCS_SYNC_TOKEN is not configured."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Trigger locale translates in publish repo
+        if: steps.token_check.outputs.available == 'true'
         env:
           GH_TOKEN: ${{ secrets.OPENCLAW_DOCS_SYNC_TOKEN }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}

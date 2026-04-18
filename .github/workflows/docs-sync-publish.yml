@@ -17,17 +17,32 @@ jobs:
   sync-publish-repo:
     runs-on: ubuntu-latest
     steps:
+      - name: Check docs sync token
+        id: token_check
+        env:
+          OPENCLAW_DOCS_SYNC_TOKEN: ${{ secrets.OPENCLAW_DOCS_SYNC_TOKEN }}
+        run: |
+          if [ -z "${OPENCLAW_DOCS_SYNC_TOKEN}" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping docs publish sync because OPENCLAW_DOCS_SYNC_TOKEN is not configured."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout source repo
-        uses: actions/checkout@v4
+        if: steps.token_check.outputs.available == 'true'
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        if: steps.token_check.outputs.available == 'true'
+        uses: actions/setup-node@v6
         with:
           node-version: 22
 
       - name: Clone publish repo
+        if: steps.token_check.outputs.available == 'true'
         env:
           OPENCLAW_DOCS_SYNC_TOKEN: ${{ secrets.OPENCLAW_DOCS_SYNC_TOKEN }}
         run: |
@@ -37,6 +52,7 @@ jobs:
             publish
 
       - name: Sync docs into publish repo
+        if: steps.token_check.outputs.available == 'true'
         run: |
           node scripts/docs-sync-publish.mjs \
             --target "$GITHUB_WORKSPACE/publish" \
@@ -44,6 +60,7 @@ jobs:
             --source-sha "$GITHUB_SHA"
 
       - name: Commit publish repo sync
+        if: steps.token_check.outputs.available == 'true'
         working-directory: publish
         run: |
           set -euo pipefail
