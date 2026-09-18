@@ -1513,10 +1513,16 @@ describe("memory cli", () => {
 
   it("prints conceptual promotion signals", async () => {
     await withTempWorkspace(async (workspaceDir) => {
+      // Stay inside DEFAULT_MEMORY_DEEP_DREAMING_MAX_AGE_DAYS (30) relative to Date.now()
+      // so ranking still surfaces candidates while keeping two distinct recall-day buckets
+      // for consolidation/concept signal coverage.
+      const dayMs = 24 * 60 * 60 * 1000;
+      const olderRecallMs = Date.now() - 2 * dayMs;
+      const newerRecallMs = Date.now() - 1 * dayMs;
       await recordShortTermRecalls({
         workspaceDir,
         query: "router vlan",
-        nowMs: Date.parse("2026-04-01T00:00:00.000Z"),
+        nowMs: olderRecallMs,
         results: [
           {
             path: "memory/2026-04-01.md",
@@ -1531,7 +1537,7 @@ describe("memory cli", () => {
       await recordShortTermRecalls({
         workspaceDir,
         query: "glacier backup",
-        nowMs: Date.parse("2026-04-03T00:00:00.000Z"),
+        nowMs: newerRecallMs,
         results: [
           {
             path: "memory/2026-04-01.md",
