@@ -1269,7 +1269,7 @@ export async function runMemoryPromote(opts: MemoryPromoteCommandOptions) {
           minRecallCount: opts.minRecallCount ?? dreaming.minRecallCount,
           minUniqueQueries: opts.minUniqueQueries ?? dreaming.minUniqueQueries,
           recencyHalfLifeDays: dreaming.recencyHalfLifeDays,
-          maxAgeDays: dreaming.maxAgeDays,
+          maxAgeDays: opts.maxAgeDays ?? dreaming.maxAgeDays,
           includePromoted: Boolean(opts.includePromoted),
         });
       } catch (err) {
@@ -1288,7 +1288,7 @@ export async function runMemoryPromote(opts: MemoryPromoteCommandOptions) {
             minScore: opts.minScore ?? dreaming.minScore,
             minRecallCount: opts.minRecallCount ?? dreaming.minRecallCount,
             minUniqueQueries: opts.minUniqueQueries ?? dreaming.minUniqueQueries,
-            maxAgeDays: dreaming.maxAgeDays,
+            maxAgeDays: opts.maxAgeDays ?? dreaming.maxAgeDays,
             timezone: dreaming.timezone,
           });
         } catch (err) {
