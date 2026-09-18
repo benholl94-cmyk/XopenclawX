@@ -171,6 +171,11 @@ export function registerMemoryCli(program: Command) {
     )
     .option("--apply", "Append selected candidates to MEMORY.md", false)
     .option("--include-promoted", "Include already promoted candidates", false)
+    .option(
+      "--max-age-days <n>",
+      "Max candidate age in days (-1 disables; default: dreaming config)",
+      (value: string) => Number(value),
+    )
     .option("--json", "Print JSON")
     .action(async (opts: MemoryPromoteCommandOptions) => {
       await runMemoryPromote(opts);
