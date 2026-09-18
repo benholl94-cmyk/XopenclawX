@@ -48,7 +48,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────────
   test-full:
     name: Full test suite (${{ matrix.node-version }})
-    runs-on: blacksmith-16vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -90,7 +90,7 @@ jobs:
   build-smoke:
     name: Build smoke
     if: ${{ !inputs.skip_build }}
-    runs-on: blacksmith-16vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -119,7 +119,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────────
   drift-detection:
     name: Drift detection
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -154,7 +154,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────────
   deadcode:
     name: Dead code / duplicate detection
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -188,7 +188,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────────
   docs-check:
     name: Docs link audit
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -217,7 +217,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────────
   extensions-full:
     name: Extensions full test suite
-    runs-on: blacksmith-16vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -245,7 +245,7 @@ jobs:
     name: Notify on nightly failure
     needs: [test-full, build-smoke, drift-detection, deadcode, extensions-full]
     if: failure() && github.event_name == 'schedule'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Report failure
