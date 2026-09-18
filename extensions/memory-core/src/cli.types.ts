@@ -21,6 +21,7 @@ export type MemoryPromoteCommandOptions = MemoryCommandOptions & {
   minUniqueQueries?: number;
   apply?: boolean;
   includePromoted?: boolean;
+  maxAgeDays?: number;
 };
 
 export type MemoryPromoteExplainOptions = MemoryCommandOptions & {
