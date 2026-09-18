@@ -21788,6 +21788,23 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                 description:
                   "Node command names to block even if present in node claims or default allowlist (exact command-name matching only, e.g. `system.run`; does not inspect shell text inside that command).",
               },
+              platformAllowlist: {
+                type: "array",
+                items: {
+                  type: "string",
+                  enum: [
+                    "ios",
+                    "ipados",
+                    "android",
+                    "macos",
+                    "windows",
+                    "linux",
+                  ],
+                },
+                title: "Gateway Node Platform Allowlist",
+                description:
+                  "Optional platform allowlist for node command routing. Nodes outside this list receive an empty command allowlist.",
+              },
             },
             additionalProperties: false,
           },
@@ -24503,6 +24520,11 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
     "gateway.nodes.denyCommands": {
       label: "Gateway Node Denylist",
       help: "Node command names to block even if present in node claims or default allowlist (exact command-name matching only, e.g. `system.run`; does not inspect shell text inside that command).",
+      tags: ["access", "network"],
+    },
+    "gateway.nodes.platformAllowlist": {
+      label: "Gateway Node Platform Allowlist",
+      help: "Optional platform allowlist for node command routing. Nodes outside this list receive an empty command allowlist.",
       tags: ["access", "network"],
     },
     "gateway.webchat.chatHistoryMaxChars": {
