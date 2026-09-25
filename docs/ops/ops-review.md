@@ -78,7 +78,7 @@ Post a brief summary in Discord `#ops-weekly` or GitHub Discussions with:
 **Duration:** 2–3 hours
 **Owner:** Security owner + release owner; core maintainers as attendees
 **Format:** Synchronous (call or in-person); document results in private maintainer docs
-           and any public-safe summary in GitHub Discussions.
+and any public-safe summary in GitHub Discussions.
 
 ### Agenda
 

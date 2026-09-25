@@ -219,7 +219,6 @@ For structured postmortems, use the [Postmortem Template](./postmortem-template.
    ```
 
 2. Roll back (release managers only):
-
    - Log into the private maintainer release docs runbook.
    - Re-point the `latest` dist-tag: `npm dist-tag add openclaw@<prev-version> latest`
    - For macOS app: re-publish previous Sparkle appcast entry (see maintainer docs).
@@ -247,7 +246,6 @@ For structured postmortems, use the [Postmortem Template](./postmortem-template.
    ```
 
 2. Check if errors are from a single channel (channel failure) or spread (gateway/model):
-
    - Channel-local: follow RB-02
    - Model-related: follow RB-03
    - Auth-related: follow RB-04
@@ -280,12 +278,12 @@ For structured postmortems, use the [Postmortem Template](./postmortem-template.
 
 ## Quick reference card
 
-| Symptom | Runbook |
-|---|---|
-| Gateway unreachable | RB-01 |
-| Channel disconnected | RB-02 |
-| Agent not responding | RB-03 |
-| Sessions lost after auth change | RB-04 |
-| Bad release, need rollback | RB-05 |
-| High error rate in logs | RB-06 |
-| Dependency vulnerability alert | RB-07 |
+| Symptom                         | Runbook |
+| ------------------------------- | ------- |
+| Gateway unreachable             | RB-01   |
+| Channel disconnected            | RB-02   |
+| Agent not responding            | RB-03   |
+| Sessions lost after auth change | RB-04   |
+| Bad release, need rollback      | RB-05   |
+| High error rate in logs         | RB-06   |
+| Dependency vulnerability alert  | RB-07   |

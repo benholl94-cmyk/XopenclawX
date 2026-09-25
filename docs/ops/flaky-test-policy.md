@@ -67,25 +67,25 @@ During the [weekly ops review](./ops-review.md), review the open `flaky-test` is
 
 ### Triage criteria
 
-| Category | Action |
-|---|---|
-| Flaky in hot path (unit shard, check-fast) | Fix within 1 sprint; escalate if blocking |
-| Flaky in extended suite (nightly/live) | Fix within 2 sprints |
+| Category                                      | Action                                                            |
+| --------------------------------------------- | ----------------------------------------------------------------- |
+| Flaky in hot path (unit shard, check-fast)    | Fix within 1 sprint; escalate if blocking                         |
+| Flaky in extended suite (nightly/live)        | Fix within 2 sprints                                              |
 | Flaky in platform-specific CI (macOS/Android) | Fix within 1 month; may accept skip with comment if platform-only |
-| Confirmed race condition | Fix before merging any related code change |
+| Confirmed race condition                      | Fix before merging any related code change                        |
 
 ### Fixing flaky tests
 
 Common root causes and fixes:
 
-| Root cause | Fix |
-|---|---|
-| Missing cleanup (timers, mocks, file handles) | Add `afterEach` / `afterAll` cleanup; see testing guidelines in `AGENTS.md` |
-| Shared global state | Use `vi.restoreAllMocks()` + reset module state; avoid `beforeEach` with `vi.resetModules()` for heavy modules |
-| Timing / race condition | Use `vi.useFakeTimers()` or explicit `await` + polling; avoid `setTimeout` delays in assertions |
-| File system order sensitivity | Sort explicitly; do not rely on `readdir` order |
-| Network call in unit test | Mock the transport layer; unit tests must not make real network calls |
-| Port conflicts in integration tests | Use random ports or test-assigned ports |
+| Root cause                                    | Fix                                                                                                            |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Missing cleanup (timers, mocks, file handles) | Add `afterEach` / `afterAll` cleanup; see testing guidelines in `AGENTS.md`                                    |
+| Shared global state                           | Use `vi.restoreAllMocks()` + reset module state; avoid `beforeEach` with `vi.resetModules()` for heavy modules |
+| Timing / race condition                       | Use `vi.useFakeTimers()` or explicit `await` + polling; avoid `setTimeout` delays in assertions                |
+| File system order sensitivity                 | Sort explicitly; do not rely on `readdir` order                                                                |
+| Network call in unit test                     | Mock the transport layer; unit tests must not make real network calls                                          |
+| Port conflicts in integration tests           | Use random ports or test-assigned ports                                                                        |
 
 ### Never do
 

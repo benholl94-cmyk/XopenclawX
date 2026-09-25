@@ -36,13 +36,13 @@ One paragraph describing what happened, who was affected, and the business impac
 
 Use UTC timestamps. Be factual and concise.
 
-| Time (UTC) | Event |
-|---|---|
-| HH:MM | First alert or user report |
-| HH:MM | On-call acknowledged |
-| HH:MM | Root cause identified |
-| HH:MM | Mitigation applied |
-| HH:MM | Full resolution confirmed |
+| Time (UTC) | Event                      |
+| ---------- | -------------------------- |
+| HH:MM      | First alert or user report |
+| HH:MM      | On-call acknowledged       |
+| HH:MM      | Root cause identified      |
+| HH:MM      | Mitigation applied         |
+| HH:MM      | Full resolution confirmed  |
 
 ---
 
@@ -94,12 +94,12 @@ What was done to resolve the incident?
 
 Each action item must have an owner and a target date. Track these as GitHub issues.
 
-| Action | Owner | Target date | GitHub issue |
-|---|---|---|---|
-| Fix root cause | @handle | YYYY-MM-DD | #NNN |
-| Add missing monitoring | @handle | YYYY-MM-DD | #NNN |
-| Update runbook RB-XX | @handle | YYYY-MM-DD | #NNN |
-| Add regression test | @handle | YYYY-MM-DD | #NNN |
+| Action                 | Owner   | Target date | GitHub issue |
+| ---------------------- | ------- | ----------- | ------------ |
+| Fix root cause         | @handle | YYYY-MM-DD  | #NNN         |
+| Add missing monitoring | @handle | YYYY-MM-DD  | #NNN         |
+| Update runbook RB-XX   | @handle | YYYY-MM-DD  | #NNN         |
+| Add regression test    | @handle | YYYY-MM-DD  | #NNN         |
 
 ---
 

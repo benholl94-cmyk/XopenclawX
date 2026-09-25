@@ -14,11 +14,11 @@ read_when:
 OpenClaw uses three logical environments. Each environment runs its own gateway instance
 with its own config file (`~/.openclaw/openclaw.json` or a path set via `OPENCLAW_CONFIG`).
 
-| Environment | Purpose | Config isolation | Secrets |
-|---|---|---|---|
-| **dev** | Local development, branch testing, unit test harness | Developer machine or CI runner; `OPENCLAW_SKIP_CHANNELS=1` | Developer API keys only; never prod credentials |
-| **staging** | Pre-release validation, beta installs, live integration tests | Dedicated VPS or container; separate `~/.openclaw` directory | Beta / staging provider keys; no prod channel tokens |
-| **production** | Live personal assistant deployment | Owner's machine or VPS; standard `~/.openclaw` path | Real channel tokens and API keys |
+| Environment    | Purpose                                                       | Config isolation                                             | Secrets                                              |
+| -------------- | ------------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------- |
+| **dev**        | Local development, branch testing, unit test harness          | Developer machine or CI runner; `OPENCLAW_SKIP_CHANNELS=1`   | Developer API keys only; never prod credentials      |
+| **staging**    | Pre-release validation, beta installs, live integration tests | Dedicated VPS or container; separate `~/.openclaw` directory | Beta / staging provider keys; no prod channel tokens |
+| **production** | Live personal assistant deployment                            | Owner's machine or VPS; standard `~/.openclaw` path          | Real channel tokens and API keys                     |
 
 ---
 
@@ -53,13 +53,13 @@ Key rules for production:
 
 ### GitHub Actions secrets checklist
 
-| Secret name | Used in | Notes |
-|---|---|---|
-| `OPENAI_API_KEY` | Live test jobs only | Never in parity gate or unit jobs |
-| `ANTHROPIC_API_KEY` | Live test jobs only | Never in parity gate or unit jobs |
-| `NPM_NPMJS_TOKEN` | Dependabot npm registry | Secops-owned |
-| `NPM_PUBLISH_TOKEN` | npm release workflow | Release managers only |
-| `OPENCLAW_LIVE_GEMINI_KEY` | Live test jobs | See parity gate fencing |
+| Secret name                | Used in                 | Notes                             |
+| -------------------------- | ----------------------- | --------------------------------- |
+| `OPENAI_API_KEY`           | Live test jobs only     | Never in parity gate or unit jobs |
+| `ANTHROPIC_API_KEY`        | Live test jobs only     | Never in parity gate or unit jobs |
+| `NPM_NPMJS_TOKEN`          | Dependabot npm registry | Secops-owned                      |
+| `NPM_PUBLISH_TOKEN`        | npm release workflow    | Release managers only             |
+| `OPENCLAW_LIVE_GEMINI_KEY` | Live test jobs          | See parity gate fencing           |
 
 Rotate secrets annually or immediately on suspected exposure. Log rotation events in the
 private maintainer docs.
@@ -112,17 +112,17 @@ Treat doctor failures as blocking — do not proceed with a broken config.
 
 ## Environment variable reference
 
-| Variable | Effect |
-|---|---|
-| `OPENCLAW_CONFIG` | Override the config file path |
-| `OPENCLAW_SKIP_CHANNELS` | Skip channel startup (dev/CI) |
-| `OPENCLAW_LIVE_TEST` | Enable live provider tests |
-| `OPENCLAW_LIVE_TEST_QUIET` | Suppress live test noise (default 1) |
-| `OPENCLAW_VITEST_MAX_WORKERS` | Cap test worker count (memory pressure) |
-| `OPENCLAW_VITEST_POOL` | Override Vitest pool (threads/forks) |
-| `OPENCLAW_LOCAL_CHECK` | Enable host-aware local-check profile |
-| `OPENCLAW_LOCAL_CHECK_MODE` | `throttled` / `full` check mode override |
-| `FAST_COMMIT` | Skip hook format + check (commit loop only) |
+| Variable                      | Effect                                      |
+| ----------------------------- | ------------------------------------------- |
+| `OPENCLAW_CONFIG`             | Override the config file path               |
+| `OPENCLAW_SKIP_CHANNELS`      | Skip channel startup (dev/CI)               |
+| `OPENCLAW_LIVE_TEST`          | Enable live provider tests                  |
+| `OPENCLAW_LIVE_TEST_QUIET`    | Suppress live test noise (default 1)        |
+| `OPENCLAW_VITEST_MAX_WORKERS` | Cap test worker count (memory pressure)     |
+| `OPENCLAW_VITEST_POOL`        | Override Vitest pool (threads/forks)        |
+| `OPENCLAW_LOCAL_CHECK`        | Enable host-aware local-check profile       |
+| `OPENCLAW_LOCAL_CHECK_MODE`   | `throttled` / `full` check mode override    |
+| `FAST_COMMIT`                 | Skip hook format + check (commit loop only) |
 
 ---
 
