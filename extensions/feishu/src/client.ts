@@ -134,6 +134,9 @@ function createTimeoutHttpInstance(defaultTimeoutMs: number): Lark.HttpInstance 
     return { timeout: defaultTimeoutMs, ...opts } as Lark.HttpRequestOptions<D>;
   }
 
+  // axios 1.20 + @larksuiteoapi typings: HttpInstance methods resolve to
+  // AxiosResponseResult<…> while Lark.HttpInstance expects Promise<R>.
+  // Runtime shape is unchanged; cast keeps createTimeoutHttpInstance assignable.
   return {
     request: (opts) => base.request(injectTimeout(opts)),
     get: (url, opts) => base.get(url, injectTimeout(opts)),
@@ -143,7 +146,7 @@ function createTimeoutHttpInstance(defaultTimeoutMs: number): Lark.HttpInstance 
     delete: (url, opts) => base.delete(url, injectTimeout(opts)),
     head: (url, opts) => base.head(url, injectTimeout(opts)),
     options: (url, opts) => base.options(url, injectTimeout(opts)),
-  };
+  } as Lark.HttpInstance;
 }
 
 /**
