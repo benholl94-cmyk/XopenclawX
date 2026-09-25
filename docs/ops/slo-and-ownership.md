@@ -96,7 +96,7 @@ The security owner is responsible for:
 - Driving the [Vulnerability SLA](./vulnerability-sla.md) compliance
 
 **Owner team:** `@openclaw/secops`
-**Security contact:** security@openclaw.ai
+**Security contact:** [security@openclaw.ai](mailto:security@openclaw.ai)
 **Trust and Security lead:** Jamieson O'Reilly (@theonejvo)
 
 ---

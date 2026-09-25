@@ -20,7 +20,7 @@ For structured postmortems, use the [Postmortem Template](./postmortem-template.
 **Trigger:** `openclaw health` returns non-zero or times out.
 **Severity:** S1 if all channels down; S2 if partial.
 
-### Steps
+### Steps — RB-01
 
 1. Check if the gateway process is running:
 
@@ -82,7 +82,7 @@ For structured postmortems, use the [Postmortem Template](./postmortem-template.
 **Trigger:** `openclaw status --all` shows a channel as disconnected or stale.
 **Severity:** S2 for primary channel; S3 for secondary.
 
-### Steps
+### Steps — RB-02
 
 1. Identify the disconnected channel:
 
@@ -131,7 +131,7 @@ For structured postmortems, use the [Postmortem Template](./postmortem-template.
 **Trigger:** Messages arrive but no agent reply; no activity in `openclaw sessions list`.
 **Severity:** S2.
 
-### Steps
+### Steps — RB-03
 
 1. Verify the agent is reachable:
 
@@ -176,7 +176,7 @@ For structured postmortems, use the [Postmortem Template](./postmortem-template.
 **Trigger:** Gateway bearer secret was rotated; existing client sessions rejected.
 **Severity:** S3.
 
-### Steps
+### Steps — RB-04
 
 1. Check recent auth rotation in logs:
 
@@ -210,7 +210,7 @@ For structured postmortems, use the [Postmortem Template](./postmortem-template.
 **Trigger:** A published npm release causes widespread regression.
 **Severity:** S1 (if critical) or S2.
 
-### Steps
+### Steps — RB-05
 
 1. Identify the last known-good version:
 
@@ -237,7 +237,7 @@ For structured postmortems, use the [Postmortem Template](./postmortem-template.
 **Trigger:** > 5 errors/min from `grep -c "error" /tmp/openclaw/openclaw-*.log`.
 **Severity:** S2 (sustained) or S3 (transient).
 
-### Steps
+### Steps — RB-06
 
 1. Sample the error messages to classify:
 
@@ -265,7 +265,7 @@ For structured postmortems, use the [Postmortem Template](./postmortem-template.
 **Trigger:** Dependabot or CodeQL alert; `npm audit` shows a high/critical vuln.
 **Severity:** S2 (high/critical with reachable exploit) or S3 (non-reachable).
 
-### Steps
+### Steps — RB-07
 
 1. Triage the alert using the [Vulnerability SLA](./vulnerability-sla.md) criteria.
 2. If critical and reachable: apply the Dependabot patch PR immediately, run
