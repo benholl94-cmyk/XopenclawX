@@ -541,9 +541,12 @@ export function applyBaileysEncryptedStreamFinishHotfix(params = {}) {
       encryptedStreamResolved = true;
     }
 
-    const dispatcherAlreadyPatched = patchedText.includes(
-      "...(typeof fetchAgent?.dispatch === 'function' ? { dispatcher: fetchAgent } : {}),",
-    );
+    const dispatcherAlreadyPatched =
+      patchedText.includes(
+        "...(typeof fetchAgent?.dispatch === 'function' ? { dispatcher: fetchAgent } : {}),",
+      ) ||
+      // Upstream baileys >=7.0.0-rc12 rewrote uploadWithFetch to gate Undici dispatchers.
+      patchedText.includes("typeof agent?.dispatch === 'function' ? agent : undefined");
     const dispatcherPatchable =
       patchedText.includes(BAILEYS_MEDIA_DISPATCHER_NEEDLE) &&
       patchedText.includes(BAILEYS_MEDIA_DISPATCHER_HEADER_NEEDLE);
