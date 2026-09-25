@@ -75,7 +75,7 @@ describe("collectBuiltBundledPluginStagedRuntimeDependencyErrors", () => {
       };
     };
 
-    expect(packageJson.dependencies?.["@whiskeysockets/baileys"]).toBe("7.0.0-rc.9");
+    expect(packageJson.dependencies?.["@whiskeysockets/baileys"]).toBe("7.0.0-rc14");
     expect(packageJson.openclaw?.bundle?.stageRuntimeDependencies).toBe(true);
   });
 });
