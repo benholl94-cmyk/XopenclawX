@@ -88,7 +88,7 @@ docker compose up -d
 openclaw health --json
 ```
 
-See [`docker-compose.yml`](../../docker-compose.yml) and
+See [`docker-compose.yml`](https://github.com/openclaw/openclaw/blob/main/docker-compose.yml) and
 [`docs/install/docker`](https://docs.openclaw.ai/install/docker) for the full guide.
 
 ### Config validation at startup

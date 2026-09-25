@@ -37,8 +37,8 @@ All docs here are living documents — update them as the system evolves.
 ## Related docs
 
 - [Release Policy](../reference/RELEASING.md)
-- [Security Policy](../../SECURITY.md)
-- [Incident Response Plan](../../INCIDENT_RESPONSE.md)
+- [Security](/gateway/security)
+- [Incident Response Plan](https://github.com/openclaw/openclaw/blob/main/INCIDENT_RESPONSE.md)
 - [Health Checks](../gateway/health.md)
 - [Doctor](../gateway/doctor.md)
-- [Contributing Guide](../../CONTRIBUTING.md)
+- [Contributing Guide](https://github.com/openclaw/openclaw/blob/main/CONTRIBUTING.md)
