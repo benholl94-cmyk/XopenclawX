@@ -11,14 +11,14 @@ read_when:
 
 ## Recovery objectives
 
-| Scenario | RTO (recovery time objective) | RPO (recovery point objective) |
-|---|---|---|
-| Gateway restart (process crash) | ≤ 1 min | 0 (stateless process; state on disk) |
-| Config corruption | ≤ 15 min | Last backup (daily recommended) |
-| Session/memory data loss | ≤ 30 min restore from backup | Last backup (daily recommended) |
-| Credential loss | ≤ 2 h (re-link channels) | N/A (not backed up; regenerated) |
-| Full host failure | ≤ 4 h | Last backup (daily recommended) |
-| Bad npm release rollback | ≤ 30 min | N/A |
+| Scenario                        | RTO (recovery time objective) | RPO (recovery point objective)       |
+| ------------------------------- | ----------------------------- | ------------------------------------ |
+| Gateway restart (process crash) | ≤ 1 min                       | 0 (stateless process; state on disk) |
+| Config corruption               | ≤ 15 min                      | Last backup (daily recommended)      |
+| Session/memory data loss        | ≤ 30 min restore from backup  | Last backup (daily recommended)      |
+| Credential loss                 | ≤ 2 h (re-link channels)      | N/A (not backed up; regenerated)     |
+| Full host failure               | ≤ 4 h                         | Last backup (daily recommended)      |
+| Bad npm release rollback        | ≤ 30 min                      | N/A                                  |
 
 ---
 
@@ -26,13 +26,13 @@ read_when:
 
 These are the critical state items that must be backed up.
 
-| Path | Contents | Backup frequency |
-|---|---|---|
-| `~/.openclaw/openclaw.json` | Main config | Daily |
-| `~/.openclaw/agents/*/sessions/` | Session transcripts and memory | Daily |
-| `~/.openclaw/agents/*/sessions/*.jsonl` | Pi session logs | Daily |
-| `~/.openclaw/credentials/` | Channel auth credentials | Daily (encrypted) |
-| `~/.openclaw/state/` | Pairing state, plugin state | Daily |
+| Path                                    | Contents                       | Backup frequency  |
+| --------------------------------------- | ------------------------------ | ----------------- |
+| `~/.openclaw/openclaw.json`             | Main config                    | Daily             |
+| `~/.openclaw/agents/*/sessions/`        | Session transcripts and memory | Daily             |
+| `~/.openclaw/agents/*/sessions/*.jsonl` | Pi session logs                | Daily             |
+| `~/.openclaw/credentials/`              | Channel auth credentials       | Daily (encrypted) |
+| `~/.openclaw/state/`                    | Pairing state, plugin state    | Daily             |
 
 > **Important:** Credential files contain sensitive tokens. Always encrypt backups
 > at rest. Never commit or expose credential directories.
@@ -263,10 +263,10 @@ Run at least one drill per quarterly resilience review (see [Ops Review Cadence]
 
 Record each drill run in the private maintainer docs or GitHub Discussions (Postmortems category).
 
-| Date | Drill | Operator | RTO achieved | Pass/Fail | Issues found |
-|---|---|---|---|---|---|
-| YYYY-MM-DD | DR-01 | @handle | X min | Pass/Fail | Notes |
-| YYYY-MM-DD | DR-02 | @handle | X min | Pass/Fail | Notes |
+| Date       | Drill | Operator | RTO achieved | Pass/Fail | Issues found |
+| ---------- | ----- | -------- | ------------ | --------- | ------------ |
+| YYYY-MM-DD | DR-01 | @handle  | X min        | Pass/Fail | Notes        |
+| YYYY-MM-DD | DR-02 | @handle  | X min        | Pass/Fail | Notes        |
 
 ---
 

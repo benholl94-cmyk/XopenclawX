@@ -19,13 +19,13 @@ fast turnaround on security fixes, and a low blast radius for any single failure
 
 ## Availability targets (SLOs)
 
-| Component | Target | Measurement window | Notes |
-|---|---|---|---|
-| Gateway process | 99.5 % uptime | Rolling 30 days | Measured by supervisor heartbeat or systemd/launchd unit restart count |
-| Channel ingestion (WhatsApp/Telegram/etc.) | Best-effort | Per-channel health monitor | `gateway.channelHealthCheckMinutes` default 5 min; see [Health Checks](../gateway/health.md) |
-| Agent response latency | p95 < 15 s | Per-session | Depends on model provider; local models excluded |
-| Release publish (stable) | ≤ 48 h after beta validation | Per-release cycle | Beta must be green before stable promotes |
-| Security patch (critical) | ≤ 48 h | From confirmed report | See [Vulnerability SLA](./vulnerability-sla.md) |
+| Component                                  | Target                       | Measurement window         | Notes                                                                                        |
+| ------------------------------------------ | ---------------------------- | -------------------------- | -------------------------------------------------------------------------------------------- |
+| Gateway process                            | 99.5 % uptime                | Rolling 30 days            | Measured by supervisor heartbeat or systemd/launchd unit restart count                       |
+| Channel ingestion (WhatsApp/Telegram/etc.) | Best-effort                  | Per-channel health monitor | `gateway.channelHealthCheckMinutes` default 5 min; see [Health Checks](../gateway/health.md) |
+| Agent response latency                     | p95 < 15 s                   | Per-session                | Depends on model provider; local models excluded                                             |
+| Release publish (stable)                   | ≤ 48 h after beta validation | Per-release cycle          | Beta must be green before stable promotes                                                    |
+| Security patch (critical)                  | ≤ 48 h                       | From confirmed report      | See [Vulnerability SLA](./vulnerability-sla.md)                                              |
 
 > These targets apply to the shipping product, not to individual user deployments.
 > Users can tune `gateway.channelHealthCheckMinutes`, `gateway.channelStaleEventThresholdMinutes`,
@@ -37,23 +37,23 @@ fast turnaround on security fixes, and a low blast radius for any single failure
 
 Use these classifications consistently in incidents, postmortems, and security reports.
 
-| Severity | Definition | Target response | Target resolution |
-|---|---|---|---|
-| **S1 – Critical** | Complete service loss, active exploit, release supply-chain compromise, OpenClaw-owned credential exposure | ≤ 1 h acknowledgment | ≤ 24 h |
-| **S2 – High** | Major feature broken for most users, verified trust-boundary bypass, release blocking regression | ≤ 4 h acknowledgment | ≤ 48 h |
-| **S3 – Medium** | Significant degradation affecting a subset of users or channels, security hardening gap with practical impact | ≤ 24 h acknowledgment | ≤ 7 days |
-| **S4 – Low** | Minor defect, cosmetic issue, defense-in-depth hardening, documentation gap | ≤ 48 h acknowledgment | Next scheduled release |
+| Severity          | Definition                                                                                                    | Target response       | Target resolution      |
+| ----------------- | ------------------------------------------------------------------------------------------------------------- | --------------------- | ---------------------- |
+| **S1 – Critical** | Complete service loss, active exploit, release supply-chain compromise, OpenClaw-owned credential exposure    | ≤ 1 h acknowledgment  | ≤ 24 h                 |
+| **S2 – High**     | Major feature broken for most users, verified trust-boundary bypass, release blocking regression              | ≤ 4 h acknowledgment  | ≤ 48 h                 |
+| **S3 – Medium**   | Significant degradation affecting a subset of users or channels, security hardening gap with practical impact | ≤ 24 h acknowledgment | ≤ 7 days               |
+| **S4 – Low**      | Minor defect, cosmetic issue, defense-in-depth hardening, documentation gap                                   | ≤ 48 h acknowledgment | Next scheduled release |
 
 ---
 
 ## Rollback targets
 
-| Scenario | Target rollback time | Method |
-|---|---|---|
-| Bad npm publish | ≤ 30 min | `npm dist-tag add openclaw@<prev> latest` (release managers only) |
-| Bad Docker image | ≤ 30 min | Re-tag previous SHA in registry, redeploy |
-| Bad macOS app build | ≤ 2 h | Re-publish previous Sparkle appcast entry |
-| Gateway config regression | ≤ 5 min | `openclaw doctor --repair` or manual config edit on host |
+| Scenario                  | Target rollback time | Method                                                            |
+| ------------------------- | -------------------- | ----------------------------------------------------------------- |
+| Bad npm publish           | ≤ 30 min             | `npm dist-tag add openclaw@<prev> latest` (release managers only) |
+| Bad Docker image          | ≤ 30 min             | Re-tag previous SHA in registry, redeploy                         |
+| Bad macOS app build       | ≤ 2 h                | Re-publish previous Sparkle appcast entry                         |
+| Gateway config regression | ≤ 5 min              | `openclaw doctor --repair` or manual config edit on host          |
 
 ---
 
@@ -96,27 +96,27 @@ The security owner is responsible for:
 - Driving the [Vulnerability SLA](./vulnerability-sla.md) compliance
 
 **Owner team:** `@openclaw/secops`
-**Security contact:** security@openclaw.ai
+**Security contact:** [security@openclaw.ai](mailto:security@openclaw.ai)
 **Trust and Security lead:** Jamieson O'Reilly (@theonejvo)
 
 ---
 
 ## Ownership matrix (surface → team)
 
-| Surface | Owner |
-|---|---|
-| Core CLI + Gateway | Core maintainers |
-| macOS app | @tyler6204, @ngutman, @nimrod |
-| iOS app | @mbelinky, @ngutman |
-| Android app | @obviyus |
-| Discord channel + Clawhub | @thewilloftheshadow |
-| Telegram channel | @joshp123, @obviyus |
-| Slack channel | Core maintainers |
-| Signal channel | Core maintainers |
-| Security and secrets surfaces | @openclaw/secops |
-| Releases and npm publish | @openclaw/openclaw-release-managers |
-| Docs and Control UI | @BunsDev, @velvet-shark |
-| Plugin SDK contract | Core maintainers |
+| Surface                       | Owner                               |
+| ----------------------------- | ----------------------------------- |
+| Core CLI + Gateway            | Core maintainers                    |
+| macOS app                     | @tyler6204, @ngutman, @nimrod       |
+| iOS app                       | @mbelinky, @ngutman                 |
+| Android app                   | @obviyus                            |
+| Discord channel + Clawhub     | @thewilloftheshadow                 |
+| Telegram channel              | @joshp123, @obviyus                 |
+| Slack channel                 | Core maintainers                    |
+| Signal channel                | Core maintainers                    |
+| Security and secrets surfaces | @openclaw/secops                    |
+| Releases and npm publish      | @openclaw/openclaw-release-managers |
+| Docs and Control UI           | @BunsDev, @velvet-shark             |
+| Plugin SDK contract           | Core maintainers                    |
 
 ---
 

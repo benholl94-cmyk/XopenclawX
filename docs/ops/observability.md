@@ -18,11 +18,11 @@ gateway and channel layers; consumers choose their own aggregation backend
 
 ### Three pillars
 
-| Pillar | Tool / surface | Notes |
-|---|---|---|
-| **Logs** | Structured JSON / text to stdout + rotating log files | Primary signal; always on |
-| **Metrics** | `openclaw health --json` snapshot; channel health counts | Pull-based; suitable for cron-driven alerting |
-| **Traces** | Agent run IDs, session IDs, channel correlation IDs | Embedded in log lines; no distributed tracing backend required |
+| Pillar      | Tool / surface                                           | Notes                                                          |
+| ----------- | -------------------------------------------------------- | -------------------------------------------------------------- |
+| **Logs**    | Structured JSON / text to stdout + rotating log files    | Primary signal; always on                                      |
+| **Metrics** | `openclaw health --json` snapshot; channel health counts | Pull-based; suitable for cron-driven alerting                  |
+| **Traces**  | Agent run IDs, session IDs, channel correlation IDs      | Embedded in log lines; no distributed tracing backend required |
 
 ---
 
@@ -38,16 +38,16 @@ gateway and channel layers; consumers choose their own aggregation backend
 
 Every significant event includes a subset of these fields:
 
-| Field | Example | Notes |
-|---|---|---|
-| `ts` | `2026-04-15T12:00:00.000Z` | ISO 8601 timestamp |
-| `level` | `info`, `warn`, `error` | Severity |
-| `channel` | `whatsapp`, `telegram`, `discord` | Channel name when applicable |
-| `accountId` | `wa-123abc` | Channel account identifier |
-| `sessionId` | `session-xyz` | Agent session ID |
-| `runId` | `run-abc` | Agent inference run ID |
-| `msg` | `"channel reconnected"` | Human-readable message |
-| `err` | `{ code, message, stack }` | Structured error when present |
+| Field       | Example                           | Notes                         |
+| ----------- | --------------------------------- | ----------------------------- |
+| `ts`        | `2026-04-15T12:00:00.000Z`        | ISO 8601 timestamp            |
+| `level`     | `info`, `warn`, `error`           | Severity                      |
+| `channel`   | `whatsapp`, `telegram`, `discord` | Channel name when applicable  |
+| `accountId` | `wa-123abc`                       | Channel account identifier    |
+| `sessionId` | `session-xyz`                     | Agent session ID              |
+| `runId`     | `run-abc`                         | Agent inference run ID        |
+| `msg`       | `"channel reconnected"`           | Human-readable message        |
+| `err`       | `{ code, message, stack }`        | Structured error when present |
 
 ### Tailing logs in production
 
@@ -64,16 +64,16 @@ docker compose logs -f gateway
 
 ### Key log patterns to watch
 
-| Pattern | Meaning | Action |
-|---|---|---|
-| `web-heartbeat` | WhatsApp heartbeat | Normal; alerts if absent > 10 min |
-| `web-reconnect` | WhatsApp reconnect | Expected on network blip |
-| `channel reconnected` | Any channel reconnect | Normal recovery |
-| `channel failed` | Unrecoverable channel failure | Run `openclaw channels login` |
-| `agent run error` | Agent inference failure | Check model provider status |
-| `compaction triggered` | Session compaction | Normal for long sessions |
-| `auth rotated` | Bearer secret rotated | Verify active sessions still authenticated |
-| `secret resolved` | SecretRef resolved at runtime | Debug: verify correct secret is loading |
+| Pattern                | Meaning                       | Action                                     |
+| ---------------------- | ----------------------------- | ------------------------------------------ |
+| `web-heartbeat`        | WhatsApp heartbeat            | Normal; alerts if absent > 10 min          |
+| `web-reconnect`        | WhatsApp reconnect            | Expected on network blip                   |
+| `channel reconnected`  | Any channel reconnect         | Normal recovery                            |
+| `channel failed`       | Unrecoverable channel failure | Run `openclaw channels login`              |
+| `agent run error`      | Agent inference failure       | Check model provider status                |
+| `compaction triggered` | Session compaction            | Normal for long sessions                   |
+| `auth rotated`         | Bearer secret rotated         | Verify active sessions still authenticated |
+| `secret resolved`      | SecretRef resolved at runtime | Debug: verify correct secret is loading    |
 
 ---
 
@@ -109,13 +109,13 @@ openclaw health --json
 
 ### Recommended alerting thresholds
 
-| Signal | Threshold | Suggested action |
-|---|---|---|
-| `ok: false` | Any occurrence | Page on-call; run `openclaw health --verbose` |
-| Channel `status != "connected"` | > 5 min | Run channel reconnect runbook |
-| `durationMs` > 5000 | Sustained | Gateway overloaded; check CPU/memory |
-| Agent `available: false` | Any occurrence | Check model provider key / quota |
-| Log error rate | > 5 errors / min (rolling) | Check error context; may be auth or provider issue |
+| Signal                          | Threshold                  | Suggested action                                   |
+| ------------------------------- | -------------------------- | -------------------------------------------------- |
+| `ok: false`                     | Any occurrence             | Page on-call; run `openclaw health --verbose`      |
+| Channel `status != "connected"` | > 5 min                    | Run channel reconnect runbook                      |
+| `durationMs` > 5000             | Sustained                  | Gateway overloaded; check CPU/memory               |
+| Agent `available: false`        | Any occurrence             | Check model provider key / quota                   |
+| Log error rate                  | > 5 errors / min (rolling) | Check error context; may be auth or provider issue |
 
 ### Cron-based health alerting (example)
 

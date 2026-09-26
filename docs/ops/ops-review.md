@@ -27,7 +27,7 @@ escalate blockers synchronously only when needed.
 
 #### 2. CI health (5 min)
 
-- Is main CI green? Check: https://github.com/openclaw/openclaw/actions/workflows/ci.yml?branch=main
+- Is main CI green? Check: [CI workflow on `main`](https://github.com/openclaw/openclaw/actions/workflows/ci.yml?branch=main)
 - New test failures or flaky test regressions this week?
 - Any `flaky-test` issues opened since last week? (see [Flaky Test Policy](./flaky-test-policy.md))
 
@@ -78,9 +78,9 @@ Post a brief summary in Discord `#ops-weekly` or GitHub Discussions with:
 **Duration:** 2–3 hours
 **Owner:** Security owner + release owner; core maintainers as attendees
 **Format:** Synchronous (call or in-person); document results in private maintainer docs
-           and any public-safe summary in GitHub Discussions.
+and any public-safe summary in GitHub Discussions.
 
-### Agenda
+### Agenda (quarterly)
 
 #### Part 1: Security maturity (60 min)
 
