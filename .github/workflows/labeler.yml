@@ -27,6 +27,10 @@ permissions: {}
 
 jobs:
   label:
+    # Upstream-only: forks lack GH_APP_PRIVATE_KEY(_FALLBACK) for openclaw App IDs
+    # 2729701/2971289, so create-github-app-token fails (privateKey required).
+    # Same guard style as Auto response (PR #30).
+    if: github.repository == 'openclaw/openclaw'
     permissions:
       contents: read
       pull-requests: write
@@ -41,15 +45,18 @@ jobs:
       - uses: actions/create-github-app-token@v2
         id: app-token-fallback
         if: steps.app-token.outcome == 'failure'
+        continue-on-error: true
         with:
           app-id: "2971289"
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY_FALLBACK }}
       - uses: actions/labeler@v6
+        if: steps.app-token.outcome == 'success' || steps.app-token-fallback.outcome == 'success'
         with:
           configuration-path: .github/labeler.yml
           repo-token: ${{ steps.app-token.outputs.token || steps.app-token-fallback.outputs.token }}
           sync-labels: true
       - name: Apply PR size label
+        if: steps.app-token.outcome == 'success' || steps.app-token-fallback.outcome == 'success'
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.app-token.outputs.token || steps.app-token-fallback.outputs.token }}
@@ -139,6 +146,7 @@ jobs:
               labels: [targetSizeLabel],
             });
       - name: Apply maintainer or trusted-contributor label
+        if: steps.app-token.outcome == 'success' || steps.app-token-fallback.outcome == 'success'
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.app-token.outputs.token || steps.app-token-fallback.outputs.token }}
@@ -210,6 +218,7 @@ jobs:
             //   });
             // }
       - name: Apply beta-blocker title label
+        if: steps.app-token.outcome == 'success' || steps.app-token-fallback.outcome == 'success'
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.app-token.outputs.token || steps.app-token-fallback.outputs.token }}
@@ -263,6 +272,7 @@ jobs:
               });
             }
       - name: Apply too-many-prs label
+        if: steps.app-token.outcome == 'success' || steps.app-token-fallback.outcome == 'success'
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.app-token.outputs.token || steps.app-token-fallback.outputs.token }}
@@ -435,7 +445,7 @@ jobs:
             }
 
   backfill-pr-labels:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'openclaw/openclaw'
     permissions:
       contents: read
       pull-requests: write
@@ -450,10 +460,12 @@ jobs:
       - uses: actions/create-github-app-token@v2
         id: app-token-fallback
         if: steps.app-token.outcome == 'failure'
+        continue-on-error: true
         with:
           app-id: "2971289"
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY_FALLBACK }}
       - name: Backfill PR labels
+        if: steps.app-token.outcome == 'success' || steps.app-token-fallback.outcome == 'success'
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.app-token.outputs.token || steps.app-token-fallback.outputs.token }}
@@ -735,6 +747,8 @@ jobs:
             core.info(`Processed ${processed} pull requests.`);
 
   label-issues:
+    # Upstream-only: forks lack GH App private keys (see label job / PR #30).
+    if: github.repository == 'openclaw/openclaw'
     permissions:
       issues: write
     runs-on: ubuntu-latest
@@ -748,10 +762,12 @@ jobs:
       - uses: actions/create-github-app-token@v2
         id: app-token-fallback
         if: steps.app-token.outcome == 'failure'
+        continue-on-error: true
         with:
           app-id: "2971289"
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY_FALLBACK }}
       - name: Apply maintainer or trusted-contributor label
+        if: steps.app-token.outcome == 'success' || steps.app-token-fallback.outcome == 'success'
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.app-token.outputs.token || steps.app-token-fallback.outputs.token }}
@@ -823,6 +839,7 @@ jobs:
             //   });
             // }
       - name: Apply beta-blocker title label
+        if: steps.app-token.outcome == 'success' || steps.app-token-fallback.outcome == 'success'
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.app-token.outputs.token || steps.app-token-fallback.outputs.token }}
