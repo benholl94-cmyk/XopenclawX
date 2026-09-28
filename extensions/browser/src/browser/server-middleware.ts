@@ -20,15 +20,37 @@ function markVerifiedBrowserAuth(req: Request) {
 export function installBrowserCommonMiddleware(app: Express) {
   app.use((req, res, next) => {
     const ctrl = new AbortController();
-    const abort = () => ctrl.abort(new Error("request aborted"));
-    req.once("aborted", abort);
+    const abort = () => {
+      if (!ctrl.signal.aborted) {
+        ctrl.abort(new Error("request aborted"));
+      }
+    };
+    // Node 18+ exposes IncomingMessage.signal; the "aborted" event is deprecated.
+    const nativeSignal = (req as unknown as { signal?: AbortSignal }).signal;
+    if (nativeSignal) {
+      if (nativeSignal.aborted) {
+        abort();
+      } else {
+        nativeSignal.addEventListener("abort", abort, { once: true });
+      }
+    } else {
+      req.once("aborted", abort);
+    }
     res.once("close", () => {
       if (!res.writableEnded) {
         abort();
       }
     });
-    // Make the signal available to browser route handlers (best-effort).
-    (req as unknown as { signal?: AbortSignal }).signal = ctrl.signal;
+    // Make a disconnect-aware signal available to browser route handlers.
+    // Node 24+: IncomingMessage.signal is getter-only; plain assignment throws
+    // and Express returns an HTML 500 page before auth/route handlers run.
+    // Shadow with an own property so req.signal remains the AbortSignal handlers read.
+    Object.defineProperty(req, "signal", {
+      value: ctrl.signal,
+      writable: false,
+      enumerable: false,
+      configurable: true,
+    });
     next();
   });
   app.use(express.json({ limit: "1mb" }));
