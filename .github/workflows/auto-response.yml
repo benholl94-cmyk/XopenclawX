@@ -19,6 +19,10 @@ permissions: {}
 
 jobs:
   auto-response:
+    # Upstream-only: forks lack GH_APP_PRIVATE_KEY(_FALLBACK) for openclaw App IDs
+    # 2729701/2971289, so create-github-app-token fails (privateKey required).
+    # Skip on non-upstream repos to stop Auto response red on every issue_comment.
+    if: github.repository == 'openclaw/openclaw'
     permissions:
       issues: write
       pull-requests: write
@@ -33,10 +37,12 @@ jobs:
       - uses: actions/create-github-app-token@v2
         id: app-token-fallback
         if: steps.app-token.outcome == 'failure'
+        continue-on-error: true
         with:
           app-id: "2971289"
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY_FALLBACK }}
       - name: Handle labeled items
+        if: steps.app-token.outcome == 'success' || steps.app-token-fallback.outcome == 'success'
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.app-token.outputs.token || steps.app-token-fallback.outputs.token }}
