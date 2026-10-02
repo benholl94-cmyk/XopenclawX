@@ -62,7 +62,7 @@ jobs:
             needs_autobuild: false
             config_file: ""
           - language: swift
-            runs_on: macos-latest
+            runs_on: macos-15
             needs_node: false
             needs_python: false
             needs_java: false
@@ -99,8 +99,45 @@ jobs:
       - name: Setup Swift build tools
         if: matrix.needs_swift_tools
         run: |
-          sudo xcode-select -s /Applications/Xcode_26.1.app
+          set -euo pipefail
+          # Prefer Xcode 16.4: ships with iOS Simulator runtime on macos-15 and
+          # matches apps/ios/project.yml (xcodeVersion 16.0, iOS 18.0).
+          # Xcode 26.1.app is present on GHA but its iOS 26.1 platform/runtime is
+          # often missing → generic/platform=iOS Simulator fails with exit 70.
+          XCODE_APP=""
+          for candidate in \
+            /Applications/Xcode_16.4.app \
+            /Applications/Xcode_16.3.app \
+            /Applications/Xcode.app \
+            /Applications/Xcode_26.2.app \
+            /Applications/Xcode_26.1.1.app \
+            /Applications/Xcode_26.1.app; do
+            if [[ -d "$candidate" ]]; then
+              XCODE_APP="$candidate"
+              break
+            fi
+          done
+          if [[ -z "$XCODE_APP" ]]; then
+            echo "error: no suitable Xcode.app found under /Applications" >&2
+            ls /Applications/Xcode*.app 2>/dev/null || true
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_APP"
+          echo "Selected Xcode: $XCODE_APP"
           xcodebuild -version
+          xcodebuild -showsdks
+          # Warm CoreSimulator so destination discovery is reliable on GHA.
+          xcrun simctl list >/dev/null 2>&1 || true
+          if ! xcodebuild -showsdks 2>/dev/null | grep -q 'iphonesimulator'; then
+            echo "iOS Simulator SDK missing; downloading platform (may take several minutes)..."
+            xcodebuild -downloadPlatform iOS
+            xcrun simctl list >/dev/null 2>&1 || true
+            xcodebuild -showsdks
+          fi
+          if ! xcodebuild -showsdks 2>/dev/null | grep -q 'iphonesimulator'; then
+            echo "error: iOS Simulator SDK still unavailable after downloadPlatform" >&2
+            exit 1
+          fi
           brew install xcodegen swiftlint swiftformat
           swift --version
 
@@ -127,10 +164,25 @@ jobs:
           swift build --package-path apps/macos --configuration release
           cd apps/ios
           xcodegen generate
+          # Prefer generic iOS Simulator once an SDK is present (setup step).
+          # Fall back to the first available simulator destination if needed.
+          DEST="generic/platform=iOS Simulator"
+          if ! xcodebuild -showdestinations -project OpenClaw.xcodeproj -scheme OpenClaw 2>/dev/null \
+            | grep -q 'platform:iOS Simulator'; then
+            echo "generic iOS Simulator destination unavailable; probing showdestinations..."
+            xcodebuild -showdestinations -project OpenClaw.xcodeproj -scheme OpenClaw || true
+            FALLBACK="$(xcodebuild -showdestinations -project OpenClaw.xcodeproj -scheme OpenClaw 2>/dev/null \
+              | sed -n 's/.*platform:iOS Simulator,[[:space:]]*id:\([^,}]*\).*/id=\1/p' \
+              | head -n1 || true)"
+            if [[ -n "${FALLBACK}" ]]; then
+              DEST="$FALLBACK"
+              echo "Using fallback destination: $DEST"
+            fi
+          fi
           xcodebuild build \
             -project OpenClaw.xcodeproj \
             -scheme OpenClaw \
-            -destination "generic/platform=iOS Simulator" \
+            -destination "$DEST" \
             CODE_SIGNING_ALLOWED=NO
 
       - name: Analyze
