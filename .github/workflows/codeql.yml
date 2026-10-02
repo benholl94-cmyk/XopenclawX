@@ -100,25 +100,27 @@ jobs:
         if: matrix.needs_swift_tools
         run: |
           set -euo pipefail
-          # Prefer Xcode 16.4: ships with iOS Simulator runtime on macos-15 and
-          # matches apps/ios/project.yml (xcodeVersion 16.0, iOS 18.0).
-          # Xcode 26.1.app is present on GHA but its iOS 26.1 platform/runtime is
-          # often missing → generic/platform=iOS Simulator fails with exit 70.
+          # apps/macos + OpenClawKit/Swabble Package.swift require swift-tools-version 6.2.
+          # Xcode 16.4 on macos-15 only ships Swift 6.1 → SPM fails with tools version mismatch.
+          # Prefer Xcode 26.x (Swift 6.2+) which is preinstalled on macos-15 runners.
+          # Keep downloadPlatform + destination fallback: some images have the Xcode.app
+          # without the matching iOS Simulator platform/runtime (exit 70).
           XCODE_APP=""
           for candidate in \
-            /Applications/Xcode_16.4.app \
-            /Applications/Xcode_16.3.app \
-            /Applications/Xcode.app \
+            /Applications/Xcode_26.3.app \
             /Applications/Xcode_26.2.app \
             /Applications/Xcode_26.1.1.app \
-            /Applications/Xcode_26.1.app; do
+            /Applications/Xcode_26.1.app \
+            /Applications/Xcode_26.0.1.app \
+            /Applications/Xcode_26.0.app \
+            /Applications/Xcode_26.app; do
             if [[ -d "$candidate" ]]; then
               XCODE_APP="$candidate"
               break
             fi
           done
           if [[ -z "$XCODE_APP" ]]; then
-            echo "error: no suitable Xcode.app found under /Applications" >&2
+            echo "error: no Xcode 26.x (Swift 6.2+) found under /Applications" >&2
             ls /Applications/Xcode*.app 2>/dev/null || true
             exit 1
           fi
@@ -140,6 +142,20 @@ jobs:
           fi
           brew install xcodegen swiftlint swiftformat
           swift --version
+          # Guard against accidentally selecting a Swift < 6.2 toolchain.
+          SWIFT_VER="$(swift --version 2>&1 | sed -n 's/.*Swift version \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -n1)"
+          echo "Parsed Swift version: ${SWIFT_VER:-unknown}"
+          if [[ -z "${SWIFT_VER}" ]]; then
+            echo "error: could not parse Swift version" >&2
+            exit 1
+          fi
+          MAJOR="${SWIFT_VER%%.*}"
+          MINOR="${SWIFT_VER#*.}"
+          MINOR="${MINOR%%.*}"
+          if (( MAJOR < 6 || (MAJOR == 6 && MINOR < 2) )); then
+            echo "error: need Swift >= 6.2 for apps/macos Package.swift (got ${SWIFT_VER})" >&2
+            exit 1
+          fi
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@b25d0ebf40e5b63ee81e1bd6e5d2a12b7c2aeb61 # v4
