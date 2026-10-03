@@ -54,6 +54,10 @@ apps/ios/.swiftpm/
 apps/ios/.derivedData/
 apps/ios/.local-signing.xcconfig
 vendor/
+!vendor/extract-zip/
+!vendor/extract-zip/**
+!vendor/pi-coding-agent/
+!vendor/pi-coding-agent/**
 apps/ios/Clawdbot.xcodeproj/
 apps/ios/Clawdbot.xcodeproj/**
 apps/macos/.build/**
