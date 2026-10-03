@@ -32,11 +32,6 @@ const buildBuiltinKeybindings = (resolvedKeybindings) => {
         const restrictOverride = RESERVED_KEYBINDINGS_FOR_EXTENSION_CONFLICTS.includes(keybinding);
         for (const key of keyList) {
             const normalizedKey = key.toLowerCase();
-            // If multiple actions bind the same key, the reserved action wins so extensions
-            // remain blocked by reserved shortcuts regardless of iteration order.
-            const existing = builtinKeybindings[normalizedKey];
-            if (existing?.restrictOverride && !restrictOverride)
-                continue;
             builtinKeybindings[normalizedKey] = {
                 keybinding,
                 restrictOverride,
@@ -49,9 +44,11 @@ const buildBuiltinKeybindings = (resolvedKeybindings) => {
  * Helper function to emit session_shutdown event to extensions.
  * Returns true if the event was emitted, false if there were no handlers.
  */
-export async function emitSessionShutdownEvent(extensionRunner, event) {
-    if (extensionRunner.hasHandlers("session_shutdown")) {
-        await extensionRunner.emit(event);
+export async function emitSessionShutdownEvent(extensionRunner) {
+    if (extensionRunner?.hasHandlers("session_shutdown")) {
+        await extensionRunner.emit({
+            type: "session_shutdown",
+        });
         return true;
     }
     return false;
@@ -64,8 +61,6 @@ const noOpUIContext = {
     onTerminalInput: () => () => { },
     setStatus: () => { },
     setWorkingMessage: () => { },
-    setWorkingVisible: () => { },
-    setWorkingIndicator: () => { },
     setHiddenThinkingLabel: () => { },
     setWidget: () => { },
     setFooter: () => { },
@@ -76,9 +71,7 @@ const noOpUIContext = {
     setEditorText: () => { },
     getEditorText: () => "",
     editor: async () => undefined,
-    addAutocompleteProvider: () => { },
     setEditorComponent: () => { },
-    getEditorComponent: () => undefined,
     get theme() {
         return theme;
     },
@@ -113,7 +106,6 @@ export class ExtensionRunner {
     shutdownHandler = () => { };
     shortcutDiagnostics = [];
     commandDiagnostics = [];
-    staleMessage;
     constructor(extensions, runtime, cwd, sessionManager, modelRegistry) {
         this.extensions = extensions;
         this.runtime = runtime;
@@ -286,17 +278,6 @@ export class ExtensionRunner {
     getShortcutDiagnostics() {
         return this.shortcutDiagnostics;
     }
-    invalidate(message = "This extension ctx is stale after session replacement or reload. Do not use a captured pi or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().") {
-        if (!this.staleMessage) {
-            this.staleMessage = message;
-            this.runtime.invalidate(message);
-        }
-    }
-    assertActive() {
-        if (this.staleMessage) {
-            throw new Error(this.staleMessage);
-        }
-    }
     onError(listener) {
         this.errorListeners.add(listener);
         return () => this.errorListeners.delete(listener);
@@ -375,97 +356,36 @@ export class ExtensionRunner {
      * Context values are resolved at call time, so changes via bindCore/bindUI are reflected.
      */
     createContext() {
-        const runner = this;
         const getModel = this.getModel;
         return {
-            get ui() {
-                runner.assertActive();
-                return runner.uiContext;
-            },
-            get hasUI() {
-                runner.assertActive();
-                return runner.hasUI();
-            },
-            get cwd() {
-                runner.assertActive();
-                return runner.cwd;
-            },
-            get sessionManager() {
-                runner.assertActive();
-                return runner.sessionManager;
-            },
-            get modelRegistry() {
-                runner.assertActive();
-                return runner.modelRegistry;
-            },
+            ui: this.uiContext,
+            hasUI: this.hasUI(),
+            cwd: this.cwd,
+            sessionManager: this.sessionManager,
+            modelRegistry: this.modelRegistry,
             get model() {
-                runner.assertActive();
                 return getModel();
             },
-            isIdle: () => {
-                runner.assertActive();
-                return runner.isIdleFn();
-            },
-            get signal() {
-                runner.assertActive();
-                return runner.getSignalFn();
-            },
-            abort: () => {
-                runner.assertActive();
-                runner.abortFn();
-            },
-            hasPendingMessages: () => {
-                runner.assertActive();
-                return runner.hasPendingMessagesFn();
-            },
-            shutdown: () => {
-                runner.assertActive();
-                runner.shutdownHandler();
-            },
-            getContextUsage: () => {
-                runner.assertActive();
-                return runner.getContextUsageFn();
-            },
-            compact: (options) => {
-                runner.assertActive();
-                runner.compactFn(options);
-            },
-            getSystemPrompt: () => {
-                runner.assertActive();
-                return runner.getSystemPromptFn();
-            },
+            isIdle: () => this.isIdleFn(),
+            signal: this.getSignalFn(),
+            abort: () => this.abortFn(),
+            hasPendingMessages: () => this.hasPendingMessagesFn(),
+            shutdown: () => this.shutdownHandler(),
+            getContextUsage: () => this.getContextUsageFn(),
+            compact: (options) => this.compactFn(options),
+            getSystemPrompt: () => this.getSystemPromptFn(),
         };
     }
     createCommandContext() {
-        // Use property descriptors instead of object spread so the guarded getters from
-        // createContext() stay lazy. A spread would eagerly read them once and freeze the
-        // old values into the returned object, bypassing stale-instance checks.
-        const context = Object.defineProperties({}, Object.getOwnPropertyDescriptors(this.createContext()));
-        context.waitForIdle = () => {
-            this.assertActive();
-            return this.waitForIdleFn();
+        return {
+            ...this.createContext(),
+            waitForIdle: () => this.waitForIdleFn(),
+            newSession: (options) => this.newSessionHandler(options),
+            fork: (entryId) => this.forkHandler(entryId),
+            navigateTree: (targetId, options) => this.navigateTreeHandler(targetId, options),
+            switchSession: (sessionPath) => this.switchSessionHandler(sessionPath),
+            reload: () => this.reloadHandler(),
         };
-        context.newSession = (options) => {
-            this.assertActive();
-            return this.newSessionHandler(options);
-        };
-        context.fork = (entryId, options) => {
-            this.assertActive();
-            return this.forkHandler(entryId, options);
-        };
-        context.navigateTree = (targetId, options) => {
-            this.assertActive();
-            return this.navigateTreeHandler(targetId, options);
-        };
-        context.switchSession = (sessionPath, options) => {
-            this.assertActive();
-            return this.switchSessionHandler(sessionPath, options);
-        };
-        context.reload = () => {
-            this.assertActive();
-            return this.reloadHandler();
-        };
-        return context;
     }
     isSessionBeforeEvent(event) {
         return (event.type === "session_before_switch" ||
@@ -503,45 +423,6 @@ export class ExtensionRunner {
             }
         }
         return result;
-    }
-    async emitMessageEnd(event) {
-        const ctx = this.createContext();
-        let currentMessage = event.message;
-        let modified = false;
-        for (const ext of this.extensions) {
-            const handlers = ext.handlers.get("message_end");
-            if (!handlers || handlers.length === 0)
-                continue;
-            for (const handler of handlers) {
-                try {
-                    const currentEvent = { ...event, message: currentMessage };
-                    const handlerResult = (await handler(currentEvent, ctx));
-                    if (!handlerResult?.message)
-                        continue;
-                    if (handlerResult.message.role !== currentMessage.role) {
-                        this.emitError({
-                            extensionPath: ext.path,
-                            event: "message_end",
-                            error: "message_end handlers must return a message with the same role",
-                        });
-                        continue;
-                    }
-                    currentMessage = handlerResult.message;
-                    modified = true;
-                }
-                catch (err) {
-                    const message = err instanceof Error ? err.message : String(err);
-                    const stack = err instanceof Error ? err.stack : undefined;
-                    this.emitError({
-                        extensionPath: ext.path,
-                        event: "message_end",
-                        error: message,
-                        stack,
-                    });
-                }
-            }
-        }
-        return modified ? currentMessage : undefined;
     }
     async emitToolResult(event) {
         const ctx = this.createContext();
@@ -697,14 +578,10 @@ export class ExtensionRunner {
         }
         return currentPayload;
     }
-    async emitBeforeAgentStart(prompt, images, systemPrompt, systemPromptOptions) {
-        let currentSystemPrompt = systemPrompt;
-        const ctx = Object.defineProperties({}, Object.getOwnPropertyDescriptors(this.createContext()));
-        ctx.getSystemPrompt = () => {
-            this.assertActive();
-            return currentSystemPrompt;
-        };
+    async emitBeforeAgentStart(prompt, images, systemPrompt) {
+        const ctx = this.createContext();
         const messages = [];
+        let currentSystemPrompt = systemPrompt;
         let systemPromptModified = false;
         for (const ext of this.extensions) {
             const handlers = ext.handlers.get("before_agent_start");
@@ -717,7 +594,6 @@ export class ExtensionRunner {
                         prompt,
                         images,
                         systemPrompt: currentSystemPrompt,
-                        systemPromptOptions,
                     };
                     const handlerResult = await handler(event, ctx);
                     if (handlerResult) {

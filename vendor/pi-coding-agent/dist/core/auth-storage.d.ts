@@ -15,11 +15,6 @@ export type OAuthCredential = {
 } & OAuthCredentials;
 export type AuthCredential = ApiKeyCredential | OAuthCredential;
 export type AuthStorageData = Record<string, AuthCredential>;
-export type AuthStatus = {
-    configured: boolean;
-    source?: "stored" | "runtime" | "environment" | "fallback" | "models_json_key" | "models_json_command";
-    label?: string;
-};
 type LockResult<T> = {
     result: T;
     next?: string;
@@ -102,10 +97,6 @@ export declare class AuthStorage {
      * Unlike getApiKey(), this doesn't refresh OAuth tokens.
      */
     hasAuth(provider: string): boolean;
-    /**
-     * Return auth status without exposing credential values or refreshing tokens.
-     */
-    getAuthStatus(provider: string): AuthStatus;
     /**
      * Get all credentials (for passing to getOAuthApiKey).
      */

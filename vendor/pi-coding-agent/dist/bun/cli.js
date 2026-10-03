@@ -1,9 +1,7 @@
 #!/usr/bin/env node
-import { APP_NAME } from "../config.js";
-process.title = APP_NAME;
+process.title = "pi";
 process.emitWarning = (() => { });
-import { restoreSandboxEnv } from "./restore-sandbox-env.js";
-restoreSandboxEnv();
 await import("./register-bedrock.js");
 await import("../cli.js");
+export {};
 //# sourceMappingURL=cli.js.map

@@ -2,7 +2,7 @@
  * Model registry - manages built-in and custom models, provides API key resolution.
  */
 import { type Api, type AssistantMessageEventStream, type Context, type Model, type OAuthProviderInterface, type SimpleStreamOptions } from "@mariozechner/pi-ai";
-import type { AuthStatus, AuthStorage } from "./auth-storage.js";
+import type { AuthStorage } from "./auth-storage.js";
 import { clearConfigValueCache } from "./resolve-config-value.js";
 export type ResolvedRequestAuth = {
     ok: true;
@@ -70,15 +70,6 @@ export declare class ModelRegistry {
      */
     getApiKeyAndHeaders(model: Model<Api>): Promise<ResolvedRequestAuth>;
     /**
-     * Return auth status for a provider, including request auth configured in models.json.
-     * This intentionally does not execute command-backed config values.
-     */
-    getProviderAuthStatus(provider: string): AuthStatus;
-    /**
-     * Get display name for a provider.
-     */
-    getProviderDisplayName(provider: string): string;
-    /**
      * Get API key for a provider.
      */
     getApiKeyForProvider(provider: string): Promise<string | undefined>;
@@ -104,13 +95,6 @@ export declare class ModelRegistry {
      * Has no effect if the provider was never registered.
      */
     unregisterProvider(providerName: string): void;
-    /**
-     * Upsert a provider config into registeredProviders.
-     * If the provider is already registered, defined values in the incoming config
-     * override existing ones; undefined values are preserved from the stored config.
-     * If the provider is not registered, the incoming config is stored as-is.
-     */
-    private upsertRegisteredProvider;
     private validateProviderConfig;
     private applyProviderConfig;
 }
@@ -118,7 +102,6 @@ export declare class ModelRegistry {
  * Input type for registerProvider API.
  */
 export interface ProviderConfigInput {
-    name?: string;
     baseUrl?: string;
     apiKey?: string;
     api?: Api;
@@ -133,7 +116,6 @@ export interface ProviderConfigInput {
         api?: Api;
         baseUrl?: string;
         reasoning: boolean;
-        thinkingLevelMap?: Model<Api>["thinkingLevelMap"];
         input: ("text" | "image")[];
         cost: {
             input: number;

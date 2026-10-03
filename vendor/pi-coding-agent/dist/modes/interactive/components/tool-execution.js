@@ -1,12 +1,11 @@
 import { Box, Container, getCapabilities, Image, Spacer, Text } from "@mariozechner/pi-tui";
-import { createAllToolDefinitions } from "../../../core/tools/index.js";
+import { allToolDefinitions } from "../../../core/tools/index.js";
 import { getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.js";
 import { convertToPng } from "../../../utils/image-convert.js";
 import { theme } from "../theme/theme.js";
 export class ToolExecutionComponent extends Container {
     contentBox;
     contentText;
-    selfRenderContainer;
     callRendererComponent;
     resultRendererComponent;
     rendererState = {};
@@ -17,7 +16,6 @@ export class ToolExecutionComponent extends Container {
     args;
     expanded = false;
     showImages;
-    imageWidthCells;
     isPartial = true;
     toolDefinition;
     builtInToolDefinition;
@@ -28,26 +26,23 @@ export class ToolExecutionComponent extends Container {
     result;
     convertedImages = new Map();
     hideComponent = false;
-    constructor(toolName, toolCallId, args, options = {}, toolDefinition, ui, cwd) {
+    constructor(toolName, toolCallId, args, options = {}, toolDefinition, ui, cwd = process.cwd()) {
         super();
         this.toolName = toolName;
         this.toolCallId = toolCallId;
         this.args = args;
         this.toolDefinition = toolDefinition;
-        this.builtInToolDefinition = createAllToolDefinitions(cwd)[toolName];
+        this.builtInToolDefinition = allToolDefinitions[toolName];
         this.showImages = options.showImages ?? true;
-        this.imageWidthCells = options.imageWidthCells ?? 60;
         this.ui = ui;
         this.cwd = cwd;
         this.addChild(new Spacer(1));
-        // Always create all shell variants. contentBox is used for default renderer-based composition.
-        // selfRenderContainer is used when the tool renders its own framing.
+        // Always create both. contentBox is used for tools with renderer-based call/result composition.
         // contentText is reserved for generic fallback rendering when no tool definition exists.
         this.contentBox = new Box(1, 1, (text) => theme.bg("toolPendingBg", text));
         this.contentText = new Text("", 1, 1, (text) => theme.bg("toolPendingBg", text));
-        this.selfRenderContainer = new Container();
         if (this.hasRendererDefinition()) {
-            this.addChild(this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox);
+            this.addChild(this.contentBox);
         }
         else {
             this.addChild(this.contentText);
@@ -74,15 +69,6 @@ export class ToolExecutionComponent extends Container {
     }
     hasRendererDefinition() {
         return this.builtInToolDefinition !== undefined || this.toolDefinition !== undefined;
-    }
-    getRenderShell() {
-        if (!this.builtInToolDefinition) {
-            return this.toolDefinition?.renderShell ?? "default";
-        }
-        if (!this.toolDefinition) {
-            return this.builtInToolDefinition.renderShell ?? "default";
-        }
-        return this.toolDefinition.renderShell ?? this.builtInToolDefinition.renderShell ?? "default";
     }
     getRenderContext(lastComponent) {
         return {
@@ -166,10 +152,6 @@ export class ToolExecutionComponent extends Container {
         this.showImages = show;
         this.updateDisplay();
     }
-    setImageWidthCells(width) {
-        this.imageWidthCells = Math.max(1, Math.floor(width));
-        this.updateDisplay();
-    }
     invalidate() {
         super.invalidate();
         this.updateDisplay();
@@ -189,26 +171,23 @@ export class ToolExecutionComponent extends Container {
         let hasContent = false;
         this.hideComponent = false;
         if (this.hasRendererDefinition()) {
-            const renderContainer = this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox;
-            if (renderContainer instanceof Box) {
-                renderContainer.setBgFn(bgFn);
-            }
-            renderContainer.clear();
+            this.contentBox.setBgFn(bgFn);
+            this.contentBox.clear();
             const callRenderer = this.getCallRenderer();
             if (!callRenderer) {
-                renderContainer.addChild(this.createCallFallback());
+                this.contentBox.addChild(this.createCallFallback());
                 hasContent = true;
             }
             else {
                 try {
                     const component = callRenderer(this.args, theme, this.getRenderContext(this.callRendererComponent));
                     this.callRendererComponent = component;
-                    renderContainer.addChild(component);
+                    this.contentBox.addChild(component);
                     hasContent = true;
                 }
                 catch {
                     this.callRendererComponent = undefined;
-                    renderContainer.addChild(this.createCallFallback());
+                    this.contentBox.addChild(this.createCallFallback());
                     hasContent = true;
                 }
             }
@@ -217,7 +196,7 @@ export class ToolExecutionComponent extends Container {
                 if (!resultRenderer) {
                     const component = this.createResultFallback();
                     if (component) {
-                        renderContainer.addChild(component);
+                        this.contentBox.addChild(component);
                         hasContent = true;
                     }
                 }
@@ -225,14 +204,14 @@ export class ToolExecutionComponent extends Container {
                     try {
                         const component = resultRenderer({ content: this.result.content, details: this.result.details }, { expanded: this.expanded, isPartial: this.isPartial }, theme, this.getRenderContext(this.resultRendererComponent));
                         this.resultRendererComponent = component;
-                        renderContainer.addChild(component);
+                        this.contentBox.addChild(component);
                         hasContent = true;
                     }
                     catch {
                         this.resultRendererComponent = undefined;
                         const component = this.createResultFallback();
                         if (component) {
-                            renderContainer.addChild(component);
+                            this.contentBox.addChild(component);
                             hasContent = true;
                         }
                     }
@@ -266,7 +245,7 @@ export class ToolExecutionComponent extends Container {
                     const spacer = new Spacer(1);
                     this.addChild(spacer);
                     this.imageSpacers.push(spacer);
-                    const imageComponent = new Image(imageData, imageMimeType, { fallbackColor: (s) => theme.fg("toolOutput", s) }, { maxWidthCells: this.imageWidthCells });
+                    const imageComponent = new Image(imageData, imageMimeType, { fallbackColor: (s) => theme.fg("toolOutput", s) }, { maxWidthCells: 60 });
                     this.imageComponents.push(imageComponent);
                     this.addChild(imageComponent);
                 }

@@ -6,37 +6,29 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getProviders, } from "@mariozechner/pi-ai";
 import { CombinedAutocompleteProvider, Container, fuzzyFilter, Loader, Markdown, matchesKey, ProcessTerminal, Spacer, setKeybindings, Text, TruncatedText, TUI, visibleWidth, } from "@mariozechner/pi-tui";
 import { spawn, spawnSync } from "child_process";
-import { APP_NAME, APP_TITLE, getAgentDir, getAuthPath, getDebugLogPath, getDocsPath, getShareViewerUrl, VERSION, } from "../../config.js";
+import { APP_NAME, getAgentDir, getAuthPath, getDebugLogPath, getShareViewerUrl, getUpdateInstruction, VERSION, } from "../../config.js";
 import { parseSkillBlock } from "../../core/agent-session.js";
-import { SessionImportFileNotFoundError } from "../../core/agent-session-runtime.js";
 import { FooterDataProvider } from "../../core/footer-data-provider.js";
 import { KeybindingsManager } from "../../core/keybindings.js";
 import { createCompactionSummaryMessage } from "../../core/messages.js";
-import { defaultModelPerProvider, findExactModelReferenceMatch, resolveModelScope } from "../../core/model-resolver.js";
+import { findExactModelReferenceMatch, resolveModelScope } from "../../core/model-resolver.js";
 import { DefaultPackageManager } from "../../core/package-manager.js";
-import { BUILT_IN_PROVIDER_DISPLAY_NAMES } from "../../core/provider-display-names.js";
 import { formatMissingSessionCwdPrompt, MissingSessionCwdError } from "../../core/session-cwd.js";
 import { SessionManager } from "../../core/session-manager.js";
 import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.js";
-import { isInstallTelemetryEnabled } from "../../core/telemetry.js";
 import { getChangelogPath, getNewEntries, parseChangelog } from "../../utils/changelog.js";
 import { copyToClipboard } from "../../utils/clipboard.js";
 import { extensionForImageMimeType, readClipboardImage } from "../../utils/clipboard-image.js";
 import { parseGitUrl } from "../../utils/git.js";
-import { getPiUserAgent } from "../../utils/pi-user-agent.js";
-import { killTrackedDetachedChildren } from "../../utils/shell.js";
 import { ensureTool } from "../../utils/tools-manager.js";
-import { checkForNewPiVersion } from "../../utils/version-check.js";
 import { ArminComponent } from "./components/armin.js";
 import { AssistantMessageComponent } from "./components/assistant-message.js";
 import { BashExecutionComponent } from "./components/bash-execution.js";
 import { BorderedLoader } from "./components/bordered-loader.js";
 import { BranchSummaryMessageComponent } from "./components/branch-summary-message.js";
 import { CompactionSummaryMessageComponent } from "./components/compaction-summary-message.js";
-import { CountdownTimer } from "./components/countdown-timer.js";
 import { CustomEditor } from "./components/custom-editor.js";
 import { CustomMessageComponent } from "./components/custom-message.js";
 import { DaxnutsComponent } from "./components/daxnuts.js";
@@ -62,46 +54,9 @@ import { getAvailableThemes, getAvailableThemesWithPaths, getEditorTheme, getMar
 function isExpandable(obj) {
     return typeof obj === "object" && obj !== null && "setExpanded" in obj && typeof obj.setExpanded === "function";
 }
-class ExpandableText extends Text {
-    getCollapsedText;
-    getExpandedText;
-    constructor(getCollapsedText, getExpandedText, expanded = false, paddingX = 0, paddingY = 0) {
-        super(expanded ? getExpandedText() : getCollapsedText(), paddingX, paddingY);
-        this.getCollapsedText = getCollapsedText;
-        this.getExpandedText = getExpandedText;
-    }
-    setExpanded(expanded) {
-        this.setText(expanded ? this.getExpandedText() : this.getCollapsedText());
-    }
-}
-const DEAD_TERMINAL_ERROR_CODES = new Set(["EIO", "EPIPE", "ENOTCONN"]);
-function isDeadTerminalError(error) {
-    if (!error || typeof error !== "object" || !("code" in error)) {
-        return false;
-    }
-    const code = error.code;
-    return code !== undefined && DEAD_TERMINAL_ERROR_CODES.has(code);
-}
-const ANTHROPIC_SUBSCRIPTION_AUTH_WARNING = "Anthropic subscription auth is active. Third-party harness usage draws from extra usage and is billed per token, not your Claude plan limits. Manage extra usage at https://claude.ai/settings/usage.";
+const ANTHROPIC_SUBSCRIPTION_AUTH_WARNING = "Anthropic subscription auth is active. Third-party usage now draws from extra usage and is billed per token, not your Claude plan limits. Manage extra usage at https://claude.ai/settings/usage.";
 function isAnthropicSubscriptionAuthKey(apiKey) {
     return typeof apiKey === "string" && apiKey.startsWith("sk-ant-oat");
-}
-function isUnknownModel(model) {
-    return !!model && model.provider === "unknown" && model.id === "unknown" && model.api === "unknown";
-}
-function hasDefaultModelProvider(providerId) {
-    return providerId in defaultModelPerProvider;
-}
-const BEDROCK_PROVIDER_ID = "amazon-bedrock";
-const BUILT_IN_MODEL_PROVIDERS = new Set(getProviders());
-export function isApiKeyLoginProvider(providerId, oauthProviderIds, builtInProviderIds = BUILT_IN_MODEL_PROVIDERS) {
-    if (BUILT_IN_PROVIDER_DISPLAY_NAMES[providerId]) {
-        return true;
-    }
-    if (builtInProviderIds.has(providerId)) {
-        return false;
-    }
-    return !oauthProviderIds.has(providerId);
 }
 export class InteractiveMode {
     options;
@@ -112,9 +67,7 @@ export class InteractiveMode {
     statusContainer;
     defaultEditor;
     editor;
-    editorComponentFactory;
     autocompleteProvider;
-    autocompleteProviderWrappers = [];
     fdPath;
     editorContainer;
     footer;
@@ -125,9 +78,7 @@ export class InteractiveMode {
     isInitialized = false;
     onInputCallback;
     loadingAnimation = undefined;
-    workingMessage = undefined;
-    workingVisible = true;
-    workingIndicatorOptions = undefined;
+    pendingWorkingMessage = undefined;
     defaultWorkingMessage = "Working...";
     defaultHiddenThinkingLabel = "Thinking...";
     hiddenThinkingLabel = this.defaultHiddenThinkingLabel;
@@ -152,7 +103,6 @@ export class InteractiveMode {
     skillCommands = new Map();
     // Agent subscription unsubscribe function
     unsubscribe;
-    signalCleanupHandlers = [];
     // Track if editor is in bash mode (text starts with !)
     isBashMode = false;
     // Track current bash execution component
@@ -164,7 +114,6 @@ export class InteractiveMode {
     autoCompactionEscapeHandler;
     // Auto-retry state
     retryLoader = undefined;
-    retryCountdown = undefined;
     retryEscapeHandler;
     // Messages queued while compaction is running
     compactionQueuedMessages = [];
@@ -204,12 +153,6 @@ export class InteractiveMode {
     constructor(runtimeHost, options = {}) {
         this.options = options;
         this.runtimeHost = runtimeHost;
-        this.runtimeHost.setBeforeSessionInvalidate(() => {
-            this.resetExtensionUI();
-        });
-        this.runtimeHost.setRebindSession(async () => {
-            await this.rebindCurrentSession();
-        });
         this.version = VERSION;
         this.ui = new TUI(new ProcessTerminal(), this.settingsManager.getShowHardwareCursor());
         this.ui.setClearOnShrink(this.settingsManager.getClearOnShrink());
@@ -266,6 +209,9 @@ export class InteractiveMode {
         return description ? `[${sourceTag}] ${description}` : `[${sourceTag}]`;
     }
     getBuiltInCommandConflictDiagnostics(extensionRunner) {
+        if (!extensionRunner) {
+            return [];
+        }
         const builtinNames = new Set(BUILTIN_SLASH_COMMANDS.map((command) => command.name));
         return extensionRunner
             .getRegisteredCommands()
@@ -278,7 +224,7 @@ export class InteractiveMode {
             path: command.sourceInfo.path,
         }));
     }
-    createBaseAutocompleteProvider() {
+    setupAutocomplete(fdPath) {
         // Define commands for autocomplete
         const slashCommands = BUILTIN_SLASH_COMMANDS.map((command) => ({
             name: command.name,
@@ -314,14 +260,10 @@ export class InteractiveMode {
         const templateCommands = this.session.promptTemplates.map((cmd) => ({
             name: cmd.name,
             description: this.prefixAutocompleteDescription(cmd.description, cmd.sourceInfo),
-            ...(cmd.argumentHint && { argumentHint: cmd.argumentHint }),
         }));
         // Convert extension commands to SlashCommand format
         const builtinCommandNames = new Set(slashCommands.map((c) => c.name));
-        const extensionCommands = this.session.extensionRunner
-            .getRegisteredCommands()
-            .filter((cmd) => !builtinCommandNames.has(cmd.name))
-            .map((cmd) => ({
+        const extensionCommands = (this.session.extensionRunner?.getRegisteredCommands().filter((cmd) => !builtinCommandNames.has(cmd.name)) ?? []).map((cmd) => ({
             name: cmd.invocationName,
             description: this.prefixAutocompleteDescription(cmd.description, cmd.sourceInfo),
             getArgumentCompletions: cmd.getArgumentCompletions,
@@ -339,17 +281,11 @@ export class InteractiveMode {
                 });
             }
         }
-        return new CombinedAutocompleteProvider([...slashCommands, ...templateCommands, ...extensionCommands, ...skillCommandList], this.sessionManager.getCwd(), this.fdPath);
-    }
-    setupAutocompleteProvider() {
-        let provider = this.createBaseAutocompleteProvider();
-        for (const wrapProvider of this.autocompleteProviderWrappers) {
-            provider = wrapProvider(provider);
-        }
-        this.autocompleteProvider = provider;
-        this.defaultEditor.setAutocompleteProvider(provider);
+        // Setup autocomplete
+        this.autocompleteProvider = new CombinedAutocompleteProvider([...slashCommands, ...templateCommands, ...extensionCommands, ...skillCommandList], this.sessionManager.getCwd(), fdPath);
+        this.defaultEditor.setAutocompleteProvider(this.autocompleteProvider);
         if (this.editor !== this.defaultEditor) {
-            this.editor.setAutocompleteProvider?.(provider);
+            this.editor.setAutocompleteProvider?.(this.autocompleteProvider);
         }
     }
     showStartupNoticesIfNeeded() {
@@ -381,7 +317,6 @@ export class InteractiveMode {
     async init() {
         if (this.isInitialized)
             return;
-        this.registerSignalHandlers();
         // Load changelog (only show new entries, skip for resumed sessions)
         this.changelogMarkdown = this.getChangelogForDisplay();
         // Ensure fd and rg are available (downloads if missing, adds to PATH via getBinDir)
@@ -395,7 +330,7 @@ export class InteractiveMode {
             const logo = theme.bold(theme.fg("accent", APP_NAME)) + theme.fg("dim", ` v${this.version}`);
             // Build startup instructions using keybinding hint helpers
             const hint = (keybinding, description) => keyHint(keybinding, description);
-            const expandedInstructions = [
+            const instructions = [
                 hint("app.interrupt", "to interrupt"),
                 hint("app.clear", "to clear"),
                 rawKeyHint(`${keyText("app.clear")} twice`, "to exit"),
@@ -416,16 +351,8 @@ export class InteractiveMode {
                 hint("app.clipboard.pasteImage", "to paste image"),
                 rawKeyHint("drop files", "to attach"),
             ].join("\n");
-            const compactInstructions = [
-                hint("app.interrupt", "interrupt"),
-                rawKeyHint(`${keyText("app.clear")}/${keyText("app.exit")}`, "clear/exit"),
-                rawKeyHint("/", "commands"),
-                rawKeyHint("!", "bash"),
-                hint("app.tools.expand", "more"),
-            ].join(theme.fg("muted", " · "));
-            const compactOnboarding = theme.fg("dim", `Press ${keyText("app.tools.expand")} to show full startup help and loaded resources.`);
             const onboarding = theme.fg("dim", `Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.`);
-            this.builtInHeader = new ExpandableText(() => `${logo}\n${compactInstructions}\n${compactOnboarding}\n\n${onboarding}`, () => `${logo}\n${expandedInstructions}\n\n${onboarding}`, this.getStartupExpansionState(), 1, 0);
+            this.builtInHeader = new Text(`${logo}\n${instructions}\n\n${onboarding}`, 1, 0);
             // Setup UI layout
             this.headerContainer.addChild(new Spacer(1));
             this.headerContainer.addChild(this.builtInHeader);
@@ -451,9 +378,13 @@ export class InteractiveMode {
         this.ui.start();
         this.isInitialized = true;
         // Initialize extensions first so resources are shown before messages
-        await this.rebindCurrentSession();
+        await this.bindCurrentSessionExtensions();
         // Render initial messages AFTER showing loaded resources
         this.renderInitialMessages();
+        // Set terminal title
+        this.updateTerminalTitle();
+        // Subscribe to agent events
+        this.subscribeToAgent();
         // Set up theme file watcher
         onThemeChange(() => {
             this.ui.invalidate();
@@ -474,10 +405,10 @@ export class InteractiveMode {
         const cwdBasename = path.basename(this.sessionManager.getCwd());
         const sessionName = this.sessionManager.getSessionName();
         if (sessionName) {
-            this.ui.terminal.setTitle(`${APP_TITLE} - ${sessionName} - ${cwdBasename}`);
+            this.ui.terminal.setTitle(`π - ${sessionName} - ${cwdBasename}`);
         }
         else {
-            this.ui.terminal.setTitle(`${APP_TITLE} - ${cwdBasename}`);
+            this.ui.terminal.setTitle(`π - ${cwdBasename}`);
         }
     }
     /**
@@ -487,7 +418,7 @@ export class InteractiveMode {
     async run() {
         await this.init();
         // Start version check asynchronously
-        checkForNewPiVersion(this.version).then((newVersion) => {
+        this.checkForNewVersion().then((newVersion) => {
             if (newVersion) {
                 this.showNewVersionNotification(newVersion);
             }
@@ -548,6 +479,29 @@ export class InteractiveMode {
                 const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
                 this.showError(errorMessage);
             }
+        }
+    }
+    /**
+     * Check npm registry for a newer version.
+     */
+    async checkForNewVersion() {
+        if (process.env.PI_SKIP_VERSION_CHECK || process.env.PI_OFFLINE)
+            return undefined;
+        try {
+            const response = await fetch("https://registry.npmjs.org/@mariozechner/pi-coding-agent/latest", {
+                signal: AbortSignal.timeout(10000),
+            });
+            if (!response.ok)
+                return undefined;
+            const data = (await response.json());
+            const latestVersion = data.version;
+            if (latestVersion && latestVersion !== this.version) {
+                return latestVersion;
+            }
+            return undefined;
+        }
+        catch {
+            return undefined;
         }
     }
     async checkForPackageUpdates() {
@@ -621,34 +575,18 @@ export class InteractiveMode {
         const changelogPath = getChangelogPath();
         const entries = parseChangelog(changelogPath);
         if (!lastVersion) {
-            // Fresh install - record the version, send telemetry, don't show changelog
+            // Fresh install - just record the version, don't show changelog
             this.settingsManager.setLastChangelogVersion(VERSION);
-            this.reportInstallTelemetry(VERSION);
             return undefined;
         }
-        const newEntries = getNewEntries(entries, lastVersion);
-        if (newEntries.length > 0) {
-            this.settingsManager.setLastChangelogVersion(VERSION);
-            this.reportInstallTelemetry(VERSION);
-            return newEntries.map((e) => e.content).join("\n\n");
+        else {
+            const newEntries = getNewEntries(entries, lastVersion);
+            if (newEntries.length > 0) {
+                this.settingsManager.setLastChangelogVersion(VERSION);
+                return newEntries.map((e) => e.content).join("\n\n");
+            }
         }
         return undefined;
-    }
-    reportInstallTelemetry(version) {
-        if (process.env.PI_OFFLINE) {
-            return;
-        }
-        if (!isInstallTelemetryEnabled(this.settingsManager)) {
-            return;
-        }
-        void fetch(`https://pi.dev/api/report-install?version=${encodeURIComponent(version)}`, {
-            headers: {
-                "User-Agent": getPiUserAgent(version),
-            },
-            signal: AbortSignal.timeout(5000),
-        })
-            .then(() => undefined)
-            .catch(() => undefined);
     }
     getMarkdownThemeWithSettings() {
         return {
@@ -668,42 +606,10 @@ export class InteractiveMode {
         }
         return result;
     }
-    formatExtensionDisplayPath(path) {
-        let result = this.formatDisplayPath(path);
-        result = result.replace(/\/index\.ts$/, "").replace(/\/index\.js$/, "");
-        return result;
-    }
-    formatContextPath(p) {
-        const cwd = path.resolve(this.sessionManager.getCwd());
-        const absolutePath = path.isAbsolute(p) ? path.resolve(p) : path.resolve(cwd, p);
-        const relativePath = path.relative(cwd, absolutePath);
-        const isInsideCwd = relativePath === "" ||
-            (!relativePath.startsWith("..") &&
-                !relativePath.startsWith(`..${path.sep}`) &&
-                !path.isAbsolute(relativePath));
-        if (isInsideCwd) {
-            return relativePath || ".";
-        }
-        return this.formatDisplayPath(absolutePath);
-    }
-    getStartupExpansionState() {
-        return this.options.verbose || this.toolOutputExpanded;
-    }
     /**
      * Get a short path relative to the package root for display.
      */
     getShortPath(fullPath, sourceInfo) {
-        const baseDir = sourceInfo?.baseDir;
-        if (baseDir && this.isPackageSource(sourceInfo)) {
-            const relativePath = path.relative(path.resolve(baseDir), path.resolve(fullPath));
-            if (relativePath &&
-                relativePath !== "." &&
-                !relativePath.startsWith("..") &&
-                !relativePath.startsWith(`..${path.sep}`) &&
-                !path.isAbsolute(relativePath)) {
-                return relativePath.replace(/\\/g, "/");
-            }
-        }
         const source = sourceInfo?.source ?? "";
         const npmMatch = fullPath.match(/node_modules\/(@?[^/]+(?:\/[^/]+)?)\/(.*)/);
         if (npmMatch && source.startsWith("npm:")) {
@@ -714,93 +620,6 @@ export class InteractiveMode {
             return gitMatch[1];
         }
         return this.formatDisplayPath(fullPath);
-    }
-    getCompactPathLabel(resourcePath, sourceInfo) {
-        const shortPath = this.getShortPath(resourcePath, sourceInfo);
-        const normalizedPath = shortPath.replace(/\\/g, "/");
-        const segments = normalizedPath.split("/").filter((segment) => segment.length > 0 && segment !== "~");
-        if (segments.length > 0) {
-            return segments[segments.length - 1];
-        }
-        return shortPath;
-    }
-    getCompactPackageSourceLabel(sourceInfo) {
-        const source = sourceInfo?.source ?? "";
-        if (source.startsWith("npm:")) {
-            return source.slice("npm:".length) || source;
-        }
-        const gitSource = parseGitUrl(source);
-        if (gitSource) {
-            return gitSource.path || source;
-        }
-        return source;
-    }
-    getCompactExtensionLabel(resourcePath, sourceInfo) {
-        if (!this.isPackageSource(sourceInfo)) {
-            return this.getCompactPathLabel(resourcePath, sourceInfo);
-        }
-        const sourceLabel = this.getCompactPackageSourceLabel(sourceInfo);
-        if (!sourceLabel) {
-            return this.getCompactPathLabel(resourcePath, sourceInfo);
-        }
-        const shortPath = this.getShortPath(resourcePath, sourceInfo).replace(/\\/g, "/");
-        const packagePath = shortPath.startsWith("extensions/") ? shortPath.slice("extensions/".length) : shortPath;
-        const parsedPath = path.posix.parse(packagePath);
-        if (parsedPath.name === "index") {
-            return !parsedPath.dir || parsedPath.dir === "." ? sourceLabel : `${sourceLabel}:${parsedPath.dir}`;
-        }
-        return `${sourceLabel}:${packagePath}`;
-    }
-    getCompactDisplayPathSegments(resourcePath) {
-        return this.formatDisplayPath(resourcePath)
-            .replace(/\\/g, "/")
-            .split("/")
-            .filter((segment) => segment.length > 0 && segment !== "~");
-    }
-    getCompactNonPackageExtensionLabel(resourcePath, index, allPaths) {
-        const segments = allPaths[index]?.segments;
-        if (!segments || segments.length === 0) {
-            return this.getCompactPathLabel(resourcePath);
-        }
-        for (let segmentCount = 1; segmentCount <= segments.length; segmentCount += 1) {
-            const candidate = segments.slice(-segmentCount).join("/");
-            const isUnique = allPaths.every((item, itemIndex) => {
-                if (itemIndex === index) {
-                    return true;
-                }
-                return item.segments.slice(-segmentCount).join("/") !== candidate;
-            });
-            if (isUnique) {
-                return candidate;
-            }
-        }
-        return segments.join("/");
-    }
-    getCompactExtensionLabels(extensions) {
-        const nonPackageExtensions = extensions
-            .map((extension) => {
-            const segments = this.getCompactDisplayPathSegments(extension.path);
-            const lastSegment = segments[segments.length - 1];
-            if (segments.length > 1 && (lastSegment === "index.ts" || lastSegment === "index.js")) {
-                segments.pop();
-            }
-            return {
-                path: extension.path,
-                sourceInfo: extension.sourceInfo,
-                segments,
-            };
-        })
-            .filter((extension) => !this.isPackageSource(extension.sourceInfo));
-        return extensions.map((extension) => {
-            if (this.isPackageSource(extension.sourceInfo)) {
-                return this.getCompactExtensionLabel(extension.path, extension.sourceInfo);
-            }
-            const nonPackageIndex = nonPackageExtensions.findIndex((item) => item.path === extension.path);
-            if (nonPackageIndex === -1) {
-                return this.getCompactPathLabel(extension.path, extension.sourceInfo);
-            }
-            return this.getCompactNonPackageExtensionLabel(extension.path, nonPackageIndex, nonPackageExtensions);
-        });
     }
     getDisplaySourceInfo(sourceInfo) {
         const source = sourceInfo?.source ?? "local";
@@ -947,18 +766,6 @@ export class InteractiveMode {
             return;
         }
         const sectionHeader = (name, color = "mdHeading") => theme.fg(color, `[${name}]`);
-        const formatCompactList = (items, options) => {
-            const labels = items.map((item) => item.trim()).filter((item) => item.length > 0);
-            if (options?.sort !== false) {
-                labels.sort((a, b) => a.localeCompare(b));
-            }
-            return theme.fg("dim", `  ${labels.join(", ")}`);
-        };
-        const addLoadedSection = (name, collapsedBody, expandedBody = collapsedBody, color = "mdHeading") => {
-            const section = new ExpandableText(() => `${sectionHeader(name, color)}\n${collapsedBody}`, () => `${sectionHeader(name, color)}\n${expandedBody}`, this.getStartupExpansionState(), 0, 0);
-            this.chatContainer.addChild(section);
-            this.chatContainer.addChild(new Spacer(1));
-        };
         const skillsResult = this.session.resourceLoader.getSkills();
         const promptsResult = this.session.resourceLoader.getPrompts();
         const themesResult = this.session.resourceLoader.getThemes();
@@ -995,8 +802,8 @@ export class InteractiveMode {
                 const contextList = contextFiles
                     .map((f) => theme.fg("dim", `  ${this.formatDisplayPath(f.path)}`))
                     .join("\n");
-                const contextCompactList = formatCompactList(contextFiles.map((contextFile) => this.formatContextPath(contextFile.path)), { sort: false });
-                addLoadedSection("Context", contextCompactList, contextList);
+                this.chatContainer.addChild(new Text(`${sectionHeader("Context")}\n${contextList}`, 0, 0));
+                this.chatContainer.addChild(new Spacer(1));
             }
             const skills = skillsResult.skills;
             if (skills.length > 0) {
@@ -1005,8 +812,8 @@ export class InteractiveMode {
                     formatPath: (item) => this.formatDisplayPath(item.path),
                     formatPackagePath: (item) => this.getShortPath(item.path, item.sourceInfo),
                 });
-                const skillCompactList = formatCompactList(skills.map((skill) => skill.name));
-                addLoadedSection("Skills", skillCompactList, skillList);
+                this.chatContainer.addChild(new Text(`${sectionHeader("Skills")}\n${skillList}`, 0, 0));
+                this.chatContainer.addChild(new Spacer(1));
             }
             const templates = this.session.promptTemplates;
             if (templates.length > 0) {
@@ -1022,17 +829,17 @@ export class InteractiveMode {
                         return template ? `/${template.name}` : this.formatDisplayPath(item.path);
                     },
                 });
-                const promptCompactList = formatCompactList(templates.map((template) => `/${template.name}`));
-                addLoadedSection("Prompts", promptCompactList, templateList);
+                this.chatContainer.addChild(new Text(`${sectionHeader("Prompts")}\n${templateList}`, 0, 0));
+                this.chatContainer.addChild(new Spacer(1));
             }
             if (extensions.length > 0) {
                 const groups = this.buildScopeGroups(extensions);
                 const extList = this.formatScopeGroups(groups, {
-                    formatPath: (item) => this.formatExtensionDisplayPath(item.path),
-                    formatPackagePath: (item) => this.formatExtensionDisplayPath(this.getShortPath(item.path, item.sourceInfo)),
+                    formatPath: (item) => this.formatDisplayPath(item.path),
+                    formatPackagePath: (item) => this.getShortPath(item.path, item.sourceInfo),
                 });
-                const extensionCompactList = formatCompactList(this.getCompactExtensionLabels(extensions));
-                addLoadedSection("Extensions", extensionCompactList, extList, "mdHeading");
+                this.chatContainer.addChild(new Text(`${sectionHeader("Extensions", "mdHeading")}\n${extList}`, 0, 0));
+                this.chatContainer.addChild(new Spacer(1));
             }
             // Show loaded themes (excluding built-in)
             const loadedThemes = themesResult.themes;
@@ -1046,8 +853,8 @@ export class InteractiveMode {
                     formatPath: (item) => this.formatDisplayPath(item.path),
                     formatPackagePath: (item) => this.getShortPath(item.path, item.sourceInfo),
                 });
-                const themeCompactList = formatCompactList(customThemes.map((loadedTheme) => loadedTheme.name ?? this.getCompactPathLabel(loadedTheme.sourcePath, loadedTheme.sourceInfo)));
-                addLoadedSection("Themes", themeCompactList, themeList);
+                this.chatContainer.addChild(new Text(`${sectionHeader("Themes")}\n${themeList}`, 0, 0));
+                this.chatContainer.addChild(new Spacer(1));
             }
         }
         if (showDiagnostics) {
@@ -1070,10 +877,10 @@ export class InteractiveMode {
                     extensionDiagnostics.push({ type: "error", message: error.error, path: error.path });
                 }
             }
-            const commandDiagnostics = this.session.extensionRunner.getCommandDiagnostics();
+            const commandDiagnostics = this.session.extensionRunner?.getCommandDiagnostics() ?? [];
             extensionDiagnostics.push(...commandDiagnostics);
             extensionDiagnostics.push(...this.getBuiltInCommandConflictDiagnostics(this.session.extensionRunner));
-            const shortcutDiagnostics = this.session.extensionRunner.getShortcutDiagnostics();
+            const shortcutDiagnostics = this.session.extensionRunner?.getShortcutDiagnostics() ?? [];
             extensionDiagnostics.push(...shortcutDiagnostics);
             if (extensionDiagnostics.length > 0) {
                 const warningLines = this.formatDiagnostics(extensionDiagnostics, sourceInfos);
@@ -1106,6 +913,7 @@ export class InteractiveMode {
                     try {
                         const result = await this.runtimeHost.newSession(options);
                         if (!result.cancelled) {
+                            await this.handleRuntimeSessionChange();
                             this.renderCurrentSessionState();
                             this.ui.requestRender();
                         }
@@ -1115,10 +923,11 @@ export class InteractiveMode {
                         return this.handleFatalRuntimeError("Failed to create session", error);
                     }
                 },
-                fork: async (entryId, options) => {
+                fork: async (entryId) => {
                     try {
-                        const result = await this.runtimeHost.fork(entryId, options);
+                        const result = await this.runtimeHost.fork(entryId);
                         if (!result.cancelled) {
+                            await this.handleRuntimeSessionChange();
                             this.renderCurrentSessionState();
                             this.editor.setText(result.selectedText ?? "");
                             this.showStatus("Forked to new session");
@@ -1145,11 +954,11 @@ export class InteractiveMode {
                         this.editor.setText(result.editorText);
                     }
                     this.showStatus("Navigated to selected point");
-                    void this.flushCompactionQueue({ willRetry: false });
                     return { cancelled: false };
                 },
-                switchSession: async (sessionPath, options) => {
-                    return this.handleResumeSession(sessionPath, options);
+                switchSession: async (sessionPath) => {
+                    await this.handleResumeSession(sessionPath);
+                    return { cancelled: false };
                 },
                 reload: async () => {
                     await this.handleReloadCommand();
@@ -1166,10 +975,15 @@ export class InteractiveMode {
             },
         });
         setRegisteredThemes(this.session.resourceLoader.getThemes().themes);
-        this.setupAutocompleteProvider();
+        this.setupAutocomplete(this.fdPath);
         const extensionRunner = this.session.extensionRunner;
+        if (!extensionRunner) {
+            this.showLoadedResources({ extensions: [], force: false });
+            this.showStartupNoticesIfNeeded();
+            return;
+        }
         this.setupExtensionShortcuts(extensionRunner);
-        this.showLoadedResources({ force: false, showDiagnosticsWhenQuiet: true });
+        this.showLoadedResources({ force: false });
         this.showStartupNoticesIfNeeded();
     }
     applyRuntimeSettings() {
@@ -1188,7 +1002,8 @@ export class InteractiveMode {
             this.editor.setAutocompleteMaxVisible?.(autocompleteMaxVisible);
         }
     }
-    async rebindCurrentSession() {
+    async handleRuntimeSessionChange() {
+        this.resetExtensionUI();
         this.unsubscribe?.();
         this.unsubscribe = undefined;
         this.applyRuntimeSettings();
@@ -1279,38 +1094,6 @@ export class InteractiveMode {
         this.footerDataProvider.setExtensionStatus(key, text);
         this.ui.requestRender();
     }
-    getWorkingLoaderMessage() {
-        return this.workingMessage ?? this.defaultWorkingMessage;
-    }
-    createWorkingLoader() {
-        return new Loader(this.ui, (spinner) => theme.fg("accent", spinner), (text) => theme.fg("muted", text), this.getWorkingLoaderMessage(), this.workingIndicatorOptions);
-    }
-    stopWorkingLoader() {
-        if (this.loadingAnimation) {
-            this.loadingAnimation.stop();
-            this.loadingAnimation = undefined;
-        }
-        this.statusContainer.clear();
-    }
-    setWorkingVisible(visible) {
-        this.workingVisible = visible;
-        if (!visible) {
-            this.stopWorkingLoader();
-            this.ui.requestRender();
-            return;
-        }
-        if (this.session.isStreaming && !this.loadingAnimation) {
-            this.statusContainer.clear();
-            this.loadingAnimation = this.createWorkingLoader();
-            this.statusContainer.addChild(this.loadingAnimation);
-        }
-        this.ui.requestRender();
-    }
-    setWorkingIndicator(options) {
-        this.workingIndicatorOptions = options;
-        this.loadingAnimation?.setIndicator(options);
-        this.ui.requestRender();
-    }
     setHiddenThinkingLabel(label) {
         this.hiddenThinkingLabel = label ?? this.defaultHiddenThinkingLabel;
         for (const child of this.chatContainer.children) {
@@ -1388,14 +1171,9 @@ export class InteractiveMode {
         this.clearExtensionWidgets();
         this.footerDataProvider.clearExtensionStatuses();
         this.footer.invalidate();
-        this.autocompleteProviderWrappers = [];
         this.setCustomEditorComponent(undefined);
-        this.setupAutocompleteProvider();
         this.defaultEditor.onExtensionShortcut = undefined;
         this.updateTerminalTitle();
-        this.workingMessage = undefined;
-        this.workingVisible = true;
-        this.setWorkingIndicator();
         if (this.loadingAnimation) {
             this.loadingAnimation.setMessage(`${this.defaultWorkingMessage} (${keyText("app.interrupt")} to interrupt)`);
         }
@@ -1473,9 +1251,6 @@ export class InteractiveMode {
         if (factory) {
             // Create and add custom header
             this.customHeader = factory(this.ui, theme);
-            if (isExpandable(this.customHeader)) {
-                this.customHeader.setExpanded(this.toolOutputExpanded);
-            }
             if (index !== -1) {
                 this.headerContainer.children[index] = this.customHeader;
             }
@@ -1487,9 +1262,6 @@ export class InteractiveMode {
         else {
             // Restore built-in header
             this.customHeader = undefined;
-            if (isExpandable(this.builtInHeader)) {
-                this.builtInHeader.setExpanded(this.toolOutputExpanded);
-            }
             if (index !== -1) {
                 this.headerContainer.children[index] = this.builtInHeader;
             }
@@ -1522,13 +1294,19 @@ export class InteractiveMode {
             onTerminalInput: (handler) => this.addExtensionTerminalInputListener(handler),
             setStatus: (key, text) => this.setExtensionStatus(key, text),
             setWorkingMessage: (message) => {
-                this.workingMessage = message;
                 if (this.loadingAnimation) {
-                    this.loadingAnimation.setMessage(message ?? this.defaultWorkingMessage);
+                    if (message) {
+                        this.loadingAnimation.setMessage(message);
+                    }
+                    else {
+                        this.loadingAnimation.setMessage(`${this.defaultWorkingMessage} (${keyText("app.interrupt")} to interrupt)`);
+                    }
+                }
+                else {
+                    // Queue message for when loadingAnimation is created (handles agent_start race)
+                    this.pendingWorkingMessage = message;
                 }
             },
-            setWorkingVisible: (visible) => this.setWorkingVisible(visible),
-            setWorkingIndicator: (options) => this.setWorkingIndicator(options),
             setHiddenThinkingLabel: (label) => this.setHiddenThinkingLabel(label),
             setWidget: (key, content, options) => this.setExtensionWidget(key, content, options),
             setFooter: (factory) => this.setExtensionFooter(factory),
@@ -1539,12 +1317,7 @@ export class InteractiveMode {
             setEditorText: (text) => this.editor.setText(text),
             getEditorText: () => this.editor.getExpandedText?.() ?? this.editor.getText(),
             editor: (title, prefill) => this.showExtensionEditor(title, prefill),
-            addAutocompleteProvider: (factory) => {
-                this.autocompleteProviderWrappers.push(factory);
-                this.setupAutocompleteProvider();
-            },
             setEditorComponent: (factory) => this.setCustomEditorComponent(factory),
-            getEditorComponent: () => this.editorComponentFactory,
             get theme() {
                 return theme;
             },
@@ -1693,7 +1466,6 @@ export class InteractiveMode {
      * Pass undefined to restore the default editor.
      */
     setCustomEditorComponent(factory) {
-        this.editorComponentFactory = factory;
         // Save text from current editor before switching
         const currentText = this.editor.getText();
         this.editorContainer.clear();
@@ -1858,7 +1630,7 @@ export class InteractiveMode {
         // Set up handlers on defaultEditor - they use this.editor for text access
         // so they work correctly regardless of which editor is active
         this.defaultEditor.onEscape = () => {
-            if (this.session.isStreaming) {
+            if (this.loadingAnimation) {
                 this.restoreQueuedMessagesToEditor({ abort: true });
             }
             else if (this.session.isBashRunning) {
@@ -1962,12 +1734,12 @@ export class InteractiveMode {
                 await this.handleModelCommand(searchTerm);
                 return;
             }
-            if (text === "/export" || text.startsWith("/export ")) {
+            if (text.startsWith("/export")) {
                 await this.handleExportCommand(text);
                 this.editor.setText("");
                 return;
             }
-            if (text === "/import" || text.startsWith("/import ")) {
+            if (text.startsWith("/import")) {
                 await this.handleImportCommand(text);
                 this.editor.setText("");
                 return;
@@ -2005,11 +1777,6 @@ export class InteractiveMode {
             if (text === "/fork") {
                 this.showUserMessageSelector();
                 this.editor.setText("");
-                return;
-            }
-            if (text === "/clone") {
-                this.editor.setText("");
-                await this.handleCloneCommand();
                 return;
             }
             if (text === "/tree") {
@@ -2128,43 +1895,34 @@ export class InteractiveMode {
         this.footer.invalidate();
         switch (event.type) {
             case "agent_start":
-                this.pendingTools.clear();
-                if (this.settingsManager.getShowTerminalProgress()) {
-                    this.ui.terminal.setProgress(true);
-                }
                 // Restore main escape handler if retry handler is still active
                 // (retry success event fires later, but we need main handler now)
                 if (this.retryEscapeHandler) {
                     this.defaultEditor.onEscape = this.retryEscapeHandler;
                     this.retryEscapeHandler = undefined;
                 }
-                if (this.retryCountdown) {
-                    this.retryCountdown.dispose();
-                    this.retryCountdown = undefined;
-                }
                 if (this.retryLoader) {
                     this.retryLoader.stop();
                     this.retryLoader = undefined;
                 }
-                this.stopWorkingLoader();
-                if (this.workingVisible) {
-                    this.loadingAnimation = this.createWorkingLoader();
-                    this.statusContainer.addChild(this.loadingAnimation);
+                if (this.loadingAnimation) {
+                    this.loadingAnimation.stop();
+                }
+                this.statusContainer.clear();
+                this.loadingAnimation = new Loader(this.ui, (spinner) => theme.fg("accent", spinner), (text) => theme.fg("muted", text), this.defaultWorkingMessage);
+                this.statusContainer.addChild(this.loadingAnimation);
+                // Apply any pending working message queued before loader existed
+                if (this.pendingWorkingMessage !== undefined) {
+                    if (this.pendingWorkingMessage) {
+                        this.loadingAnimation.setMessage(this.pendingWorkingMessage);
+                    }
+                    this.pendingWorkingMessage = undefined;
                 }
                 this.ui.requestRender();
                 break;
             case "queue_update":
                 this.updatePendingMessagesDisplay();
                 this.ui.requestRender();
-                break;
-            case "session_info_changed":
-                this.updateTerminalTitle();
-                this.footer.invalidate();
-                this.ui.requestRender();
-                break;
-            case "thinking_level_changed":
-                this.footer.invalidate();
-                this.updateEditorBorderColor();
                 break;
             case "message_start":
                 if (event.message.role === "custom") {
@@ -2193,7 +1951,6 @@ export class InteractiveMode {
                             if (!this.pendingTools.has(content.id)) {
                                 const component = new ToolExecutionComponent(content.name, content.id, content.arguments, {
                                     showImages: this.settingsManager.getShowImages(),
-                                    imageWidthCells: this.settingsManager.getImageWidthCells(),
                                 }, this.getRegisteredToolDefinition(content.name), this.ui, this.sessionManager.getCwd());
                                 component.setExpanded(this.toolOutputExpanded);
                                 this.chatContainer.addChild(component);
@@ -2254,7 +2011,6 @@ export class InteractiveMode {
                 if (!component) {
                     component = new ToolExecutionComponent(event.toolName, event.toolCallId, event.args, {
                         showImages: this.settingsManager.getShowImages(),
-                        imageWidthCells: this.settingsManager.getImageWidthCells(),
                     }, this.getRegisteredToolDefinition(event.toolName), this.ui, this.sessionManager.getCwd());
                     component.setExpanded(this.toolOutputExpanded);
                     this.chatContainer.addChild(component);
@@ -2282,9 +2038,6 @@ export class InteractiveMode {
                 break;
             }
             case "agent_end":
-                if (this.settingsManager.getShowTerminalProgress()) {
-                    this.ui.terminal.setProgress(false);
-                }
                 if (this.loadingAnimation) {
                     this.loadingAnimation.stop();
                     this.loadingAnimation = undefined;
@@ -2300,9 +2053,6 @@ export class InteractiveMode {
                 this.ui.requestRender();
                 break;
             case "compaction_start": {
-                if (this.settingsManager.getShowTerminalProgress()) {
-                    this.ui.terminal.setProgress(true);
-                }
                 // Keep editor active; submissions are queued during compaction.
                 this.autoCompactionEscapeHandler = this.defaultEditor.onEscape;
                 this.defaultEditor.onEscape = () => {
@@ -2319,9 +2069,6 @@ export class InteractiveMode {
                 break;
             }
             case "compaction_end": {
-                if (this.settingsManager.getShowTerminalProgress()) {
-                    this.ui.terminal.setProgress(false);
-                }
                 if (this.autoCompactionEscapeHandler) {
                     this.defaultEditor.onEscape = this.autoCompactionEscapeHandler;
                     this.autoCompactionEscapeHandler = undefined;
@@ -2366,14 +2113,8 @@ export class InteractiveMode {
                 };
                 // Show retry indicator
                 this.statusContainer.clear();
-                this.retryCountdown?.dispose();
-                const retryMessage = (seconds) => `Retrying (${event.attempt}/${event.maxAttempts}) in ${seconds}s... (${keyText("app.interrupt")} to cancel)`;
-                this.retryLoader = new Loader(this.ui, (spinner) => theme.fg("warning", spinner), (text) => theme.fg("muted", text), retryMessage(Math.ceil(event.delayMs / 1000)));
-                this.retryCountdown = new CountdownTimer(event.delayMs, this.ui, (seconds) => {
-                    this.retryLoader?.setMessage(retryMessage(seconds));
-                }, () => {
-                    this.retryCountdown = undefined;
-                });
+                const delaySeconds = Math.round(event.delayMs / 1000);
+                this.retryLoader = new Loader(this.ui, (spinner) => theme.fg("warning", spinner), (text) => theme.fg("muted", text), `Retrying (${event.attempt}/${event.maxAttempts}) in ${delaySeconds}s... (${keyText("app.interrupt")} to cancel)`);
                 this.statusContainer.addChild(this.retryLoader);
                 this.ui.requestRender();
                 break;
@@ -2383,10 +2124,6 @@ export class InteractiveMode {
                 if (this.retryEscapeHandler) {
                     this.defaultEditor.onEscape = this.retryEscapeHandler;
                     this.retryEscapeHandler = undefined;
-                }
-                if (this.retryCountdown) {
-                    this.retryCountdown.dispose();
-                    this.retryCountdown = undefined;
                 }
                 // Stop loader
                 if (this.retryLoader) {
@@ -2448,7 +2185,7 @@ export class InteractiveMode {
             }
             case "custom": {
                 if (message.display) {
-                    const renderer = this.session.extensionRunner.getMessageRenderer(message.customType);
+                    const renderer = this.session.extensionRunner?.getMessageRenderer(message.customType);
                     const component = new CustomMessageComponent(message, renderer, this.getMarkdownThemeWithSettings());
                     component.setExpanded(this.toolOutputExpanded);
                     this.chatContainer.addChild(component);
@@ -2472,12 +2209,10 @@ export class InteractiveMode {
             case "user": {
                 const textContent = this.getUserMessageText(message);
                 if (textContent) {
-                    if (this.chatContainer.children.length > 0) {
-                        this.chatContainer.addChild(new Spacer(1));
-                    }
                     const skillBlock = parseSkillBlock(textContent);
                     if (skillBlock) {
                         // Render skill block (collapsible)
+                        this.chatContainer.addChild(new Spacer(1));
                         const component = new SkillInvocationMessageComponent(skillBlock, this.getMarkdownThemeWithSettings());
                         component.setExpanded(this.toolOutputExpanded);
                         this.chatContainer.addChild(component);
@@ -2519,7 +2254,6 @@ export class InteractiveMode {
      */
     renderSessionContext(sessionContext, options = {}) {
         this.pendingTools.clear();
-        const renderedPendingTools = new Map();
         if (options.updateFooter) {
             this.footer.invalidate();
             this.updateEditorBorderColor();
@@ -2531,10 +2265,7 @@ export class InteractiveMode {
                 // Render tool call components
                 for (const content of message.content) {
                     if (content.type === "toolCall") {
-                        const component = new ToolExecutionComponent(content.name, content.id, content.arguments, {
-                            showImages: this.settingsManager.getShowImages(),
-                            imageWidthCells: this.settingsManager.getImageWidthCells(),
-                        }, this.getRegisteredToolDefinition(content.name), this.ui, this.sessionManager.getCwd());
+                        const component = new ToolExecutionComponent(content.name, content.id, content.arguments, { showImages: this.settingsManager.getShowImages() }, this.getRegisteredToolDefinition(content.name), this.ui, this.sessionManager.getCwd());
                         component.setExpanded(this.toolOutputExpanded);
                         this.chatContainer.addChild(component);
                         if (message.stopReason === "aborted" || message.stopReason === "error") {
@@ -2552,17 +2283,17 @@ export class InteractiveMode {
                             component.updateResult({ content: [{ type: "text", text: errorMessage }], isError: true });
                         }
                         else {
-                            renderedPendingTools.set(content.id, component);
+                            this.pendingTools.set(content.id, component);
                         }
                     }
                 }
             }
             else if (message.role === "toolResult") {
                 // Match tool results to pending tool components
-                const component = renderedPendingTools.get(message.toolCallId);
+                const component = this.pendingTools.get(message.toolCallId);
                 if (component) {
                     component.updateResult(message);
-                    renderedPendingTools.delete(message.toolCallId);
+                    this.pendingTools.delete(message.toolCallId);
                 }
             }
             else {
@@ -2570,9 +2301,7 @@ export class InteractiveMode {
                 this.addMessageToChat(message, options);
             }
         }
-        for (const [toolCallId, component] of renderedPendingTools) {
-            this.pendingTools.set(toolCallId, component);
-        }
+        this.pendingTools.clear();
         this.ui.requestRender();
     }
     renderInitialMessages() {
@@ -2622,29 +2351,22 @@ export class InteractiveMode {
     }
     /**
      * Gracefully shutdown the agent.
-     * Stops the TUI before emitting shutdown events so extension UI cleanup cannot
-     * repaint the final frame while the process is exiting.
+     * Emits shutdown event to extensions, then exits.
      */
     isShuttingDown = false;
     async shutdown() {
         if (this.isShuttingDown)
             return;
         this.isShuttingDown = true;
-        this.unregisterSignalHandlers();
+        await this.runtimeHost.dispose();
+        // Wait for any pending renders to complete
+        // requestRender() uses process.nextTick(), so we wait one tick
+        await new Promise((resolve) => process.nextTick(resolve));
         // Drain any in-flight Kitty key release events before stopping.
         // This prevents escape sequences from leaking to the parent shell over slow SSH.
         await this.ui.terminal.drainInput(1000);
         this.stop();
-        await this.runtimeHost.dispose();
         process.exit(0);
-    }
-    emergencyTerminalExit() {
-        this.isShuttingDown = true;
-        this.unregisterSignalHandlers();
-        killTrackedDetachedChildren();
-        // The terminal is gone. Do not run normal shutdown because TUI and
-        // extension cleanup can write restore sequences and re-trigger EIO.
-        process.exit(129);
     }
     /**
      * Check if shutdown was requested and perform shutdown if so.
@@ -2654,45 +2376,7 @@ export class InteractiveMode {
             return;
         await this.shutdown();
     }
-    registerSignalHandlers() {
-        this.unregisterSignalHandlers();
-        const signals = ["SIGTERM"];
-        if (process.platform !== "win32") {
-            signals.push("SIGHUP");
-        }
-        for (const signal of signals) {
-            const handler = () => {
-                if (signal === "SIGHUP") {
-                    this.emergencyTerminalExit();
-                }
-                killTrackedDetachedChildren();
-                void this.shutdown();
-            };
-            process.prependListener(signal, handler);
-            this.signalCleanupHandlers.push(() => process.off(signal, handler));
-        }
-        const terminalErrorHandler = (error) => {
-            if (isDeadTerminalError(error)) {
-                this.emergencyTerminalExit();
-            }
-            throw error;
-        };
-        process.stdout.on("error", terminalErrorHandler);
-        process.stderr.on("error", terminalErrorHandler);
-        this.signalCleanupHandlers.push(() => process.stdout.off("error", terminalErrorHandler));
-        this.signalCleanupHandlers.push(() => process.stderr.off("error", terminalErrorHandler));
-    }
-    unregisterSignalHandlers() {
-        for (const cleanup of this.signalCleanupHandlers) {
-            cleanup();
-        }
-        this.signalCleanupHandlers = [];
-    }
     handleCtrlZ() {
-        if (process.platform === "win32") {
-            this.showStatus("Suspend to background is not supported on Windows");
-            return;
-        }
         // Keep the event loop alive while suspended. Without this, stopping the TUI
         // can leave Node with no ref'ed handles, causing the process to exit on fg
         // before the SIGCONT handler gets a chance to restore the terminal.
@@ -2747,7 +2431,6 @@ export class InteractiveMode {
         }
         // If not streaming, Alt+Enter acts like regular Enter (trigger onSubmit)
         else if (this.editor.onSubmit) {
-            this.editor.setText("");
             this.editor.onSubmit(text);
         }
     }
@@ -2805,10 +2488,6 @@ export class InteractiveMode {
     }
     setToolsExpanded(expanded) {
         this.toolOutputExpanded = expanded;
-        const activeHeader = this.customHeader ?? this.builtInHeader;
-        if (isExpandable(activeHeader)) {
-            activeHeader.setExpanded(expanded);
-        }
         for (const child of this.chatContainer.children) {
             if (isExpandable(child)) {
                 child.setExpanded(expanded);
@@ -2890,8 +2569,8 @@ export class InteractiveMode {
         this.ui.requestRender();
     }
     showNewVersionNotification(newVersion) {
-        const action = theme.fg("accent", `${APP_NAME} update`);
-        const updateInstruction = theme.fg("muted", `New version ${newVersion} is available. Run `) + action;
+        const action = theme.fg("accent", getUpdateInstruction("@mariozechner/pi-coding-agent"));
+        const updateInstruction = theme.fg("muted", `New version ${newVersion} is available. `) + action;
         const changelogUrl = theme.fg("accent", "https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/CHANGELOG.md");
         const changelogLine = theme.fg("muted", "Changelog: ") + changelogUrl;
         this.chatContainer.addChild(new Spacer(1));
@@ -2993,6 +2672,8 @@ export class InteractiveMode {
         if (!text.startsWith("/"))
             return false;
         const extensionRunner = this.session.extensionRunner;
+        if (!extensionRunner)
+            return false;
         const spaceIndex = text.indexOf(" ");
         const commandName = spaceIndex === -1 ? text.slice(1) : text.slice(1, spaceIndex);
         return !!extensionRunner.getCommand(commandName);
@@ -3098,7 +2779,6 @@ export class InteractiveMode {
             const selector = new SettingsSelectorComponent({
                 autoCompact: this.session.autoCompactionEnabled,
                 showImages: this.settingsManager.getShowImages(),
-                imageWidthCells: this.settingsManager.getImageWidthCells(),
                 autoResizeImages: this.settingsManager.getImageAutoResize(),
                 blockImages: this.settingsManager.getBlockImages(),
                 enableSkillCommands: this.settingsManager.getEnableSkillCommands(),
@@ -3111,7 +2791,6 @@ export class InteractiveMode {
                 availableThemes: getAvailableThemes(),
                 hideThinkingBlock: this.hideThinkingBlock,
                 collapseChangelog: this.settingsManager.getCollapseChangelog(),
-                enableInstallTelemetry: this.settingsManager.getEnableInstallTelemetry(),
                 doubleEscapeAction: this.settingsManager.getDoubleEscapeAction(),
                 treeFilterMode: this.settingsManager.getTreeFilterMode(),
                 showHardwareCursor: this.settingsManager.getShowHardwareCursor(),
@@ -3119,8 +2798,6 @@ export class InteractiveMode {
                 autocompleteMaxVisible: this.settingsManager.getAutocompleteMaxVisible(),
                 quietStartup: this.settingsManager.getQuietStartup(),
                 clearOnShrink: this.settingsManager.getClearOnShrink(),
-                showTerminalProgress: this.settingsManager.getShowTerminalProgress(),
-                warnings: this.settingsManager.getWarnings(),
             }, {
                 onAutoCompactChange: (enabled) => {
                     this.session.setAutoCompactionEnabled(enabled);
@@ -3134,14 +2811,6 @@ export class InteractiveMode {
                         }
                     }
                 },
-                onImageWidthCellsChange: (width) => {
-                    this.settingsManager.setImageWidthCells(width);
-                    for (const child of this.chatContainer.children) {
-                        if (child instanceof ToolExecutionComponent) {
-                            child.setImageWidthCells(width);
-                        }
-                    }
-                },
                 onAutoResizeImagesChange: (enabled) => {
                     this.settingsManager.setImageAutoResize(enabled);
                 },
@@ -3150,7 +2819,7 @@ export class InteractiveMode {
                 },
                 onEnableSkillCommandsChange: (enabled) => {
                     this.settingsManager.setEnableSkillCommands(enabled);
-                    this.setupAutocompleteProvider();
+                    this.setupAutocomplete(this.fdPath);
                 },
                 onSteeringModeChange: (mode) => {
                     this.session.setSteeringMode(mode);
@@ -3196,9 +2865,6 @@ export class InteractiveMode {
                 onCollapseChangelogChange: (collapsed) => {
                     this.settingsManager.setCollapseChangelog(collapsed);
                 },
-                onEnableInstallTelemetryChange: (enabled) => {
-                    this.settingsManager.setEnableInstallTelemetry(enabled);
-                },
                 onQuietStartupChange: (enabled) => {
                     this.settingsManager.setQuietStartup(enabled);
                 },
@@ -3229,12 +2895,6 @@ export class InteractiveMode {
                 onClearOnShrinkChange: (enabled) => {
                     this.settingsManager.setClearOnShrink(enabled);
                     this.ui.setClearOnShrink(enabled);
-                },
-                onShowTerminalProgressChange: (enabled) => {
-                    this.settingsManager.setShowTerminalProgress(enabled);
-                },
-                onWarningsChange: (warnings) => {
-                    this.settingsManager.setWarnings(warnings);
                 },
                 onCancel: () => {
                     done();
@@ -3289,9 +2949,6 @@ export class InteractiveMode {
         this.footerDataProvider.setAvailableProviderCount(uniqueProviders.size);
     }
     async maybeWarnAboutAnthropicSubscriptionAuth(model = this.session.model) {
-        if (this.settingsManager.getWarnings().anthropicExtraUsage === false) {
-            return;
-        }
         if (this.anthropicSubscriptionWarningShown) {
             return;
         }
@@ -3351,24 +3008,33 @@ export class InteractiveMode {
         const sessionScopedModels = this.session.scopedModels;
         const hasSessionScope = sessionScopedModels.length > 0;
         // Build enabled model IDs from session state or settings
-        let currentEnabledIds = null;
+        const enabledModelIds = new Set();
+        let hasFilter = false;
         if (hasSessionScope) {
             // Use current session's scoped models
-            currentEnabledIds = sessionScopedModels.map((scoped) => `${scoped.model.provider}/${scoped.model.id}`);
+            for (const sm of sessionScopedModels) {
+                enabledModelIds.add(`${sm.model.provider}/${sm.model.id}`);
+            }
+            hasFilter = true;
         }
         else {
             // Fall back to settings
             const patterns = this.settingsManager.getEnabledModels();
             if (patterns !== undefined && patterns.length > 0) {
+                hasFilter = true;
                 const scopedModels = await resolveModelScope(patterns, this.session.modelRegistry);
-                currentEnabledIds = scopedModels.map((scoped) => `${scoped.model.provider}/${scoped.model.id}`);
+                for (const sm of scopedModels) {
+                    enabledModelIds.add(`${sm.model.provider}/${sm.model.id}`);
+                }
             }
         }
+        // Track current enabled state (session-only until persisted)
+        const currentEnabledIds = new Set(enabledModelIds);
+        let currentHasFilter = hasFilter;
         // Helper to update session's scoped models (session-only, no persist)
         const updateSessionModels = async (enabledIds) => {
-            currentEnabledIds = enabledIds === null ? null : [...enabledIds];
-            if (enabledIds && enabledIds.length > 0 && enabledIds.length < allModels.length) {
-                const newScopedModels = await resolveModelScope(enabledIds, this.session.modelRegistry);
+            if (enabledIds.size > 0 && enabledIds.size < allModels.length) {
+                const newScopedModels = await resolveModelScope(Array.from(enabledIds), this.session.modelRegistry);
                 this.session.setScopedModels(newScopedModels.map((sm) => ({
                     model: sm.model,
                     thinkingLevel: sm.thinkingLevel,
@@ -3385,16 +3051,49 @@ export class InteractiveMode {
             const selector = new ScopedModelsSelectorComponent({
                 allModels,
                 enabledModelIds: currentEnabledIds,
+                hasEnabledModelsFilter: currentHasFilter,
             }, {
-                onChange: async (enabledIds) => {
-                    await updateSessionModels(enabledIds);
+                onModelToggle: async (modelId, enabled) => {
+                    if (enabled) {
+                        currentEnabledIds.add(modelId);
+                    }
+                    else {
+                        currentEnabledIds.delete(modelId);
+                    }
+                    currentHasFilter = true;
+                    await updateSessionModels(currentEnabledIds);
+                },
+                onEnableAll: async (allModelIds) => {
+                    currentEnabledIds.clear();
+                    for (const id of allModelIds) {
+                        currentEnabledIds.add(id);
+                    }
+                    currentHasFilter = false;
+                    await updateSessionModels(currentEnabledIds);
+                },
+                onClearAll: async () => {
+                    currentEnabledIds.clear();
+                    currentHasFilter = true;
+                    await updateSessionModels(currentEnabledIds);
+                },
+                onToggleProvider: async (_provider, modelIds, enabled) => {
+                    for (const id of modelIds) {
+                        if (enabled) {
+                            currentEnabledIds.add(id);
+                        }
+                        else {
+                            currentEnabledIds.delete(id);
+                        }
+                    }
+                    currentHasFilter = true;
+                    await updateSessionModels(currentEnabledIds);
                 },
                 onPersist: (enabledIds) => {
                     // Persist to settings
-                    const newPatterns = enabledIds === null || enabledIds.length === allModels.length
+                    const newPatterns = enabledIds.length === allModels.length
                         ? undefined // All enabled = clear filter
                         : enabledIds;
-                    this.settingsManager.setEnabledModels(newPatterns ? [...newPatterns] : undefined);
+                    this.settingsManager.setEnabledModels(newPatterns);
                     this.showStatus("Model selection saved to settings");
                 },
                 onCancel: () => {
@@ -3411,51 +3110,25 @@ export class InteractiveMode {
             this.showStatus("No messages to fork from");
             return;
         }
-        const initialSelectedId = userMessages[userMessages.length - 1]?.entryId;
         this.showSelector((done) => {
             const selector = new UserMessageSelectorComponent(userMessages.map((m) => ({ id: m.entryId, text: m.text })), async (entryId) => {
-                try {
-                    const result = await this.runtimeHost.fork(entryId);
-                    if (result.cancelled) {
-                        done();
-                        this.ui.requestRender();
-                        return;
-                    }
-                    this.renderCurrentSessionState();
-                    this.editor.setText(result.selectedText ?? "");
+                const result = await this.runtimeHost.fork(entryId);
+                if (result.cancelled) {
                     done();
-                    this.showStatus("Forked to new session");
+                    this.ui.requestRender();
+                    return;
                 }
-                catch (error) {
-                    done();
-                    this.showError(error instanceof Error ? error.message : String(error));
-                }
+                await this.handleRuntimeSessionChange();
+                this.renderCurrentSessionState();
+                this.editor.setText(result.selectedText ?? "");
+                done();
+                this.showStatus("Branched to new session");
             }, () => {
                 done();
                 this.ui.requestRender();
-            }, initialSelectedId);
+            });
             return { component: selector, focus: selector.getMessageList() };
         });
-    }
-    async handleCloneCommand() {
-        const leafId = this.sessionManager.getLeafId();
-        if (!leafId) {
-            this.showStatus("Nothing to clone yet");
-            return;
-        }
-        try {
-            const result = await this.runtimeHost.fork(leafId, { position: "at" });
-            if (result.cancelled) {
-                this.ui.requestRender();
-                return;
-            }
-            this.renderCurrentSessionState();
-            this.editor.setText("");
-            this.showStatus("Cloned to new session");
-        }
-        catch (error) {
-            this.showError(error instanceof Error ? error.message : String(error));
-        }
     }
     showTreeSelector(initialSelectedId) {
         const tree = this.sessionManager.getTree();
@@ -3537,7 +3210,6 @@ export class InteractiveMode {
                         this.editor.setText(result.editorText);
                     }
                     this.showStatus("Navigated to selected point");
-                    void this.flushCompactionQueue({ willRetry: false });
                 }
                 catch (error) {
                     this.showError(error instanceof Error ? error.message : String(error));
@@ -3583,155 +3255,70 @@ export class InteractiveMode {
             return { component: selector, focus: selector };
         });
     }
-    async handleResumeSession(sessionPath, options) {
+    async handleResumeSession(sessionPath) {
         if (this.loadingAnimation) {
             this.loadingAnimation.stop();
             this.loadingAnimation = undefined;
         }
         this.statusContainer.clear();
         try {
-            const result = await this.runtimeHost.switchSession(sessionPath, {
-                withSession: options?.withSession,
-            });
+            const result = await this.runtimeHost.switchSession(sessionPath);
             if (result.cancelled) {
-                return result;
+                return;
             }
+            await this.handleRuntimeSessionChange();
             this.renderCurrentSessionState();
             this.showStatus("Resumed session");
-            return result;
         }
         catch (error) {
             if (error instanceof MissingSessionCwdError) {
                 const selectedCwd = await this.promptForMissingSessionCwd(error);
                 if (!selectedCwd) {
                     this.showStatus("Resume cancelled");
-                    return { cancelled: true };
+                    return;
                 }
-                const result = await this.runtimeHost.switchSession(sessionPath, {
-                    cwdOverride: selectedCwd,
-                    withSession: options?.withSession,
-                });
+                const result = await this.runtimeHost.switchSession(sessionPath, selectedCwd);
                 if (result.cancelled) {
-                    return result;
+                    return;
                 }
+                await this.handleRuntimeSessionChange();
                 this.renderCurrentSessionState();
                 this.showStatus("Resumed session in current cwd");
-                return result;
+                return;
             }
-            return this.handleFatalRuntimeError("Failed to resume session", error);
+            await this.handleFatalRuntimeError("Failed to resume session", error);
         }
-    }
-    getLoginProviderOptions(authType) {
-        const authStorage = this.session.modelRegistry.authStorage;
-        const oauthProviders = authStorage.getOAuthProviders();
-        const oauthProviderIds = new Set(oauthProviders.map((provider) => provider.id));
-        const options = oauthProviders.map((provider) => ({
-            id: provider.id,
-            name: provider.name,
-            authType: "oauth",
-        }));
-        const modelProviders = new Set(this.session.modelRegistry.getAll().map((model) => model.provider));
-        for (const providerId of modelProviders) {
-            if (!isApiKeyLoginProvider(providerId, oauthProviderIds)) {
-                continue;
-            }
-            options.push({
-                id: providerId,
-                name: this.session.modelRegistry.getProviderDisplayName(providerId),
-                authType: "api_key",
-            });
-        }
-        const filteredOptions = authType ? options.filter((option) => option.authType === authType) : options;
-        return filteredOptions.sort((a, b) => a.name.localeCompare(b.name));
-    }
-    getLogoutProviderOptions() {
-        const authStorage = this.session.modelRegistry.authStorage;
-        const options = [];
-        for (const providerId of authStorage.list()) {
-            const credential = authStorage.get(providerId);
-            if (!credential) {
-                continue;
-            }
-            options.push({
-                id: providerId,
-                name: this.session.modelRegistry.getProviderDisplayName(providerId),
-                authType: credential.type,
-            });
-        }
-        return options.sort((a, b) => a.name.localeCompare(b.name));
-    }
-    showLoginAuthTypeSelector() {
-        const subscriptionLabel = "Use a subscription";
-        const apiKeyLabel = "Use an API key";
-        this.showSelector((done) => {
-            const selector = new ExtensionSelectorComponent("Select authentication method:", [subscriptionLabel, apiKeyLabel], (option) => {
-                done();
-                const authType = option === subscriptionLabel ? "oauth" : "api_key";
-                this.showLoginProviderSelector(authType);
-            }, () => {
-                done();
-                this.ui.requestRender();
-            });
-            return { component: selector, focus: selector };
-        });
-    }
-    showLoginProviderSelector(authType) {
-        const providerOptions = this.getLoginProviderOptions(authType);
-        if (providerOptions.length === 0) {
-            this.showStatus(authType === "oauth" ? "No subscription providers available." : "No API key providers available.");
-            return;
-        }
-        this.showSelector((done) => {
-            const selector = new OAuthSelectorComponent("login", this.session.modelRegistry.authStorage, providerOptions, async (providerId) => {
-                done();
-                const providerOption = providerOptions.find((provider) => provider.id === providerId);
-                if (!providerOption) {
-                    return;
-                }
-                if (providerOption.authType === "oauth") {
-                    await this.showLoginDialog(providerOption.id, providerOption.name);
-                }
-                else if (providerOption.id === BEDROCK_PROVIDER_ID) {
-                    this.showBedrockSetupDialog(providerOption.id, providerOption.name);
-                }
-                else {
-                    await this.showApiKeyLoginDialog(providerOption.id, providerOption.name);
-                }
-            }, () => {
-                done();
-                this.showLoginAuthTypeSelector();
-            }, (providerId) => this.session.modelRegistry.getProviderAuthStatus(providerId));
-            return { component: selector, focus: selector };
-        });
     }
     async showOAuthSelector(mode) {
-        if (mode === "login") {
-            this.showLoginAuthTypeSelector();
-            return;
-        }
-        const providerOptions = this.getLogoutProviderOptions();
-        if (providerOptions.length === 0) {
-            this.showStatus("No stored credentials to remove. /logout only removes credentials saved by /login; environment variables and models.json config are unchanged.");
-            return;
+        if (mode === "logout") {
+            const providers = this.session.modelRegistry.authStorage.list();
+            const loggedInProviders = providers.filter((p) => this.session.modelRegistry.authStorage.get(p)?.type === "oauth");
+            if (loggedInProviders.length === 0) {
+                this.showStatus("No OAuth providers logged in. Use /login first.");
+                return;
+            }
         }
         this.showSelector((done) => {
-            const selector = new OAuthSelectorComponent(mode, this.session.modelRegistry.authStorage, providerOptions, async (providerId) => {
+            const selector = new OAuthSelectorComponent(mode, this.session.modelRegistry.authStorage, async (providerId) => {
                 done();
-                const providerOption = providerOptions.find((provider) => provider.id === providerId);
-                if (!providerOption) {
-                    return;
+                if (mode === "login") {
+                    await this.showLoginDialog(providerId);
                 }
-                try {
-                    this.session.modelRegistry.authStorage.logout(providerOption.id);
-                    this.session.modelRegistry.refresh();
-                    await this.updateAvailableProviderCount();
-                    const message = providerOption.authType === "oauth"
-                        ? `Logged out of ${providerOption.name}`
-                        : `Removed stored API key for ${providerOption.name}. Environment variables and models.json config are unchanged.`;
-                    this.showStatus(message);
-                }
-                catch (error) {
-                    this.showError(`Logout failed: ${error instanceof Error ? error.message : String(error)}`);
+                else {
+                    // Logout flow
+                    const providerInfo = this.session.modelRegistry.authStorage
+                        .getOAuthProviders()
+                        .find((p) => p.id === providerId);
+                    const providerName = providerInfo?.name || providerId;
+                    try {
+                        this.session.modelRegistry.authStorage.logout(providerId);
+                        this.session.modelRegistry.refresh();
+                        await this.updateAvailableProviderCount();
+                        this.showStatus(`Logged out of ${providerName}`);
+                    }
+                    catch (error) {
+                        this.showError(`Logout failed: ${error instanceof Error ? error.message : String(error)}`);
+                    }
                 }
             }, () => {
                 done();
@@ -3740,140 +3327,15 @@ export class InteractiveMode {
             return { component: selector, focus: selector };
         });
     }
-    async completeProviderAuthentication(providerId, providerName, authType, previousModel) {
-        this.session.modelRegistry.refresh();
-        const actionLabel = authType === "oauth" ? `Logged in to ${providerName}` : `Saved API key for ${providerName}`;
-        let selectedModel;
-        let selectionError;
-        if (isUnknownModel(previousModel)) {
-            const availableModels = this.session.modelRegistry.getAvailable();
-            const providerModels = availableModels.filter((model) => model.provider === providerId);
-            if (!hasDefaultModelProvider(providerId)) {
-                selectionError = `${actionLabel}, but no default model is configured for provider "${providerId}". Use /model to select a model.`;
-            }
-            else if (providerModels.length === 0) {
-                selectionError = `${actionLabel}, but no models are available for that provider. Use /model to select a model.`;
-            }
-            else {
-                const defaultModelId = defaultModelPerProvider[providerId];
-                selectedModel = providerModels.find((model) => model.id === defaultModelId);
-                if (!selectedModel) {
-                    selectionError = `${actionLabel}, but its default model "${defaultModelId}" is not available. Use /model to select a model.`;
-                }
-                else {
-                    try {
-                        await this.session.setModel(selectedModel);
-                    }
-                    catch (error) {
-                        selectedModel = undefined;
-                        const errorMessage = error instanceof Error ? error.message : String(error);
-                        selectionError = `${actionLabel}, but selecting its default model failed: ${errorMessage}. Use /model to select a model.`;
-                    }
-                }
-            }
-        }
-        await this.updateAvailableProviderCount();
-        this.footer.invalidate();
-        this.updateEditorBorderColor();
-        if (selectedModel) {
-            this.showStatus(`${actionLabel}. Selected ${selectedModel.id}. Credentials saved to ${getAuthPath()}`);
-            void this.maybeWarnAboutAnthropicSubscriptionAuth(selectedModel);
-            this.checkDaxnutsEasterEgg(selectedModel);
-        }
-        else {
-            this.showStatus(`${actionLabel}. Credentials saved to ${getAuthPath()}`);
-            if (selectionError) {
-                this.showError(selectionError);
-            }
-            else {
-                void this.maybeWarnAboutAnthropicSubscriptionAuth();
-            }
-        }
-    }
-    showBedrockSetupDialog(providerId, providerName) {
-        const restoreEditor = () => {
-            this.editorContainer.clear();
-            this.editorContainer.addChild(this.editor);
-            this.ui.setFocus(this.editor);
-            this.ui.requestRender();
-        };
-        const dialog = new LoginDialogComponent(this.ui, providerId, () => restoreEditor(), providerName, "Amazon Bedrock setup");
-        dialog.showInfo([
-            theme.fg("text", "Amazon Bedrock uses AWS credentials instead of a single API key."),
-            theme.fg("text", "Configure an AWS profile, IAM keys, bearer token, or role-based credentials."),
-            theme.fg("muted", "See:"),
-            theme.fg("accent", `  ${path.join(getDocsPath(), "providers.md")}`),
-        ]);
-        this.editorContainer.clear();
-        this.editorContainer.addChild(dialog);
-        this.ui.setFocus(dialog);
-        this.ui.requestRender();
-    }
-    async showApiKeyLoginDialog(providerId, providerName) {
-        const previousModel = this.session.model;
-        const dialog = new LoginDialogComponent(this.ui, providerId, (_success, _message) => {
-            // Completion handled below
-        }, providerName);
-        this.editorContainer.clear();
-        this.editorContainer.addChild(dialog);
-        this.ui.setFocus(dialog);
-        this.ui.requestRender();
-        const restoreEditor = () => {
-            this.editorContainer.clear();
-            this.editorContainer.addChild(this.editor);
-            this.ui.setFocus(this.editor);
-            this.ui.requestRender();
-        };
-        try {
-            const apiKey = (await dialog.showPrompt("Enter API key:")).trim();
-            if (!apiKey) {
-                throw new Error("API key cannot be empty.");
-            }
-            this.session.modelRegistry.authStorage.set(providerId, { type: "api_key", key: apiKey });
-            restoreEditor();
-            await this.completeProviderAuthentication(providerId, providerName, "api_key", previousModel);
-        }
-        catch (error) {
-            restoreEditor();
-            const errorMsg = error instanceof Error ? error.message : String(error);
-            if (errorMsg !== "Login cancelled") {
-                this.showError(`Failed to save API key for ${providerName}: ${errorMsg}`);
-            }
-        }
-    }
-    showOAuthLoginSelect(dialog, prompt) {
-        return new Promise((resolve) => {
-            const restoreDialog = () => {
-                this.editorContainer.clear();
-                this.editorContainer.addChild(dialog);
-                this.ui.setFocus(dialog);
-                this.ui.requestRender();
-            };
-            const labels = prompt.options.map((option) => option.label);
-            const selector = new ExtensionSelectorComponent(prompt.message, labels, (optionLabel) => {
-                restoreDialog();
-                resolve(prompt.options.find((option) => option.label === optionLabel)?.id);
-            }, () => {
-                restoreDialog();
-                resolve(undefined);
-            });
-            this.editorContainer.clear();
-            this.editorContainer.addChild(selector);
-            this.ui.setFocus(selector);
-            this.ui.requestRender();
-        });
-    }
-    async showLoginDialog(providerId, providerName) {
-        const providerInfo = this.session.modelRegistry.authStorage
-            .getOAuthProviders()
-            .find((provider) => provider.id === providerId);
-        const previousModel = this.session.model;
+    async showLoginDialog(providerId) {
+        const providerInfo = this.session.modelRegistry.authStorage.getOAuthProviders().find((p) => p.id === providerId);
+        const providerName = providerInfo?.name || providerId;
         // Providers that use callback servers (can paste redirect URL)
         const usesCallbackServer = providerInfo?.usesCallbackServer ?? false;
         // Create login dialog component
         const dialog = new LoginDialogComponent(this.ui, providerId, (_success, _message) => {
             // Completion handled below
-        }, providerName);
+        });
         // Show dialog in editor container
         this.editorContainer.clear();
         this.editorContainer.addChild(dialog);
@@ -3926,13 +3388,14 @@ export class InteractiveMode {
                 onProgress: (message) => {
                     dialog.showProgress(message);
                 },
-                onSelect: (prompt) => this.showOAuthLoginSelect(dialog, prompt),
                 onManualCodeInput: () => manualCodePromise,
                 signal: dialog.signal,
             });
             // Success
             restoreEditor();
-            await this.completeProviderAuthentication(providerId, providerName, "oauth", previousModel);
+            this.session.modelRegistry.refresh();
+            await this.updateAvailableProviderCount();
+            this.showStatus(`Logged in to ${providerName}. Credentials saved to ${getAuthPath()}`);
         }
         catch (error) {
             restoreEditor();
@@ -3955,20 +3418,16 @@ export class InteractiveMode {
             return;
         }
         this.resetExtensionUI();
-        const reloadBox = new Container();
-        const borderColor = (s) => theme.fg("border", s);
-        reloadBox.addChild(new DynamicBorder(borderColor));
-        reloadBox.addChild(new Spacer(1));
-        reloadBox.addChild(new Text(theme.fg("muted", "Reloading keybindings, extensions, skills, prompts, themes..."), 1, 0));
-        reloadBox.addChild(new Spacer(1));
-        reloadBox.addChild(new DynamicBorder(borderColor));
+        const loader = new BorderedLoader(this.ui, theme, "Reloading keybindings, extensions, skills, prompts, themes...", {
+            cancellable: false,
+        });
         const previousEditor = this.editor;
         this.editorContainer.clear();
-        this.editorContainer.addChild(reloadBox);
-        this.ui.setFocus(reloadBox);
-        this.ui.requestRender(true);
-        await new Promise((resolve) => process.nextTick(resolve));
-        const dismissReloadBox = (editor) => {
+        this.editorContainer.addChild(loader);
+        this.ui.setFocus(loader);
+        this.ui.requestRender();
+        const dismissLoader = (editor) => {
+            loader.dispose();
             this.editorContainer.clear();
             this.editorContainer.addChild(editor);
             this.ui.setFocus(editor);
@@ -3977,10 +3436,6 @@ export class InteractiveMode {
         try {
             await this.session.reload();
             this.keybindings.reload();
-            const activeHeader = this.customHeader ?? this.builtInHeader;
-            if (isExpandable(activeHeader)) {
-                activeHeader.setExpanded(this.toolOutputExpanded);
-            }
             setRegisteredThemes(this.session.resourceLoader.getThemes().themes);
             this.hideThinkingBlock = this.settingsManager.getHideThinkingBlock();
             const themeName = this.settingsManager.getTheme();
@@ -3998,11 +3453,13 @@ export class InteractiveMode {
             }
             this.ui.setShowHardwareCursor(this.settingsManager.getShowHardwareCursor());
             this.ui.setClearOnShrink(this.settingsManager.getClearOnShrink());
-            this.setupAutocompleteProvider();
+            this.setupAutocomplete(this.fdPath);
             const runner = this.session.extensionRunner;
-            this.setupExtensionShortcuts(runner);
+            if (runner) {
+                this.setupExtensionShortcuts(runner);
+            }
             this.rebuildChatFromMessages();
-            dismissReloadBox(this.editor);
+            dismissLoader(this.editor);
             this.showLoadedResources({
                 force: false,
                 showDiagnosticsWhenQuiet: true,
@@ -4014,12 +3471,13 @@ export class InteractiveMode {
             this.showStatus("Reloaded keybindings, extensions, skills, prompts, themes");
         }
         catch (error) {
-            dismissReloadBox(previousEditor);
+            dismissLoader(previousEditor);
             this.showError(`Reload failed: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
     async handleExportCommand(text) {
-        const outputPath = this.getPathCommandArgument(text, "/export");
+        const parts = text.split(/\s+/);
+        const outputPath = parts.length > 1 ? parts[1] : undefined;
         try {
             if (outputPath?.endsWith(".jsonl")) {
                 const filePath = this.session.exportToJsonl(outputPath);
@@ -4034,37 +3492,13 @@ export class InteractiveMode {
             this.showError(`Failed to export session: ${error instanceof Error ? error.message : "Unknown error"}`);
         }
     }
-    getPathCommandArgument(text, command) {
-        if (text === command) {
-            return undefined;
-        }
-        if (!text.startsWith(`${command} `)) {
-            return undefined;
-        }
-        const argsString = text.slice(command.length + 1).trimStart();
-        if (!argsString) {
-            return undefined;
-        }
-        const firstChar = argsString[0];
-        if (firstChar === '"' || firstChar === "'") {
-            const closingQuoteIndex = argsString.indexOf(firstChar, 1);
-            if (closingQuoteIndex < 0) {
-                return undefined;
-            }
-            return argsString.slice(1, closingQuoteIndex);
-        }
-        const firstWhitespaceIndex = argsString.search(/\s/);
-        if (firstWhitespaceIndex < 0) {
-            return argsString;
-        }
-        return argsString.slice(0, firstWhitespaceIndex);
-    }
     async handleImportCommand(text) {
-        const inputPath = this.getPathCommandArgument(text, "/import");
-        if (!inputPath) {
+        const parts = text.split(/\s+/);
+        if (parts.length < 2 || !parts[1]) {
             this.showError("Usage: /import <path.jsonl>");
             return;
         }
+        const inputPath = parts[1];
         const confirmed = await this.showExtensionConfirm("Import session", `Replace current session with ${inputPath}?`);
         if (!confirmed) {
             this.showStatus("Import cancelled");
@@ -4081,6 +3515,7 @@ export class InteractiveMode {
                 this.showStatus("Import cancelled");
                 return;
             }
+            await this.handleRuntimeSessionChange();
             this.renderCurrentSessionState();
             this.showStatus(`Session imported from: ${inputPath}`);
         }
@@ -4096,12 +3531,9 @@ export class InteractiveMode {
                     this.showStatus("Import cancelled");
                     return;
                 }
+                await this.handleRuntimeSessionChange();
                 this.renderCurrentSessionState();
                 this.showStatus(`Session imported from: ${inputPath}`);
-                return;
-            }
-            if (error instanceof SessionImportFileNotFoundError) {
-                this.showError(`Failed to import session: ${error.message}`);
                 return;
             }
             await this.handleFatalRuntimeError("Failed to import session", error);
@@ -4222,7 +3654,8 @@ export class InteractiveMode {
             this.ui.requestRender();
             return;
         }
-        this.session.setSessionName(name);
+        this.sessionManager.appendSessionInfo(name);
+        this.updateTerminalTitle();
         this.chatContainer.addChild(new Spacer(1));
         this.chatContainer.addChild(new Text(theme.fg("dim", `Session name set: ${name}`), 1, 0));
         this.ui.requestRender();
@@ -4389,17 +3822,19 @@ export class InteractiveMode {
 `;
         // Add extension-registered shortcuts
         const extensionRunner = this.session.extensionRunner;
-        const shortcuts = extensionRunner.getShortcuts(this.keybindings.getEffectiveConfig());
-        if (shortcuts.size > 0) {
-            hotkeys += `
+        if (extensionRunner) {
+            const shortcuts = extensionRunner.getShortcuts(this.keybindings.getEffectiveConfig());
+            if (shortcuts.size > 0) {
+                hotkeys += `
 **Extensions**
 | Key | Action |
 |-----|--------|
 `;
-            for (const [key, shortcut] of shortcuts) {
-                const description = shortcut.description ?? shortcut.extensionPath;
-                const keyDisplay = key.replace(/\b\w/g, (c) => c.toUpperCase());
-                hotkeys += `| \`${keyDisplay}\` | ${description} |\n`;
+                for (const [key, shortcut] of shortcuts) {
+                    const description = shortcut.description ?? shortcut.extensionPath;
+                    const keyDisplay = key.replace(/\b\w/g, (c) => c.toUpperCase());
+                    hotkeys += `| \`${keyDisplay}\` | ${description} |\n`;
+                }
             }
         }
         this.chatContainer.addChild(new Spacer(1));
@@ -4421,6 +3856,7 @@ export class InteractiveMode {
             if (result.cancelled) {
                 return;
             }
+            await this.handleRuntimeSessionChange();
             this.renderCurrentSessionState();
             this.chatContainer.addChild(new Spacer(1));
             this.chatContainer.addChild(new Text(`${theme.fg("accent", "✓ New session started")}`, 1, 1));
@@ -4480,12 +3916,14 @@ export class InteractiveMode {
     async handleBashCommand(command, excludeFromContext = false) {
         const extensionRunner = this.session.extensionRunner;
         // Emit user_bash event to let extensions intercept
-        const eventResult = await extensionRunner.emitUserBash({
-            type: "user_bash",
-            command,
-            excludeFromContext,
-            cwd: this.sessionManager.getCwd(),
-        });
+        const eventResult = extensionRunner
+            ? await extensionRunner.emitUserBash({
+                type: "user_bash",
+                command,
+                excludeFromContext,
+                cwd: this.sessionManager.getCwd(),
+            })
+            : undefined;
         // If extension returned a full result, use it directly
         if (eventResult?.result) {
             const result = eventResult.result;
@@ -4562,10 +4000,6 @@ export class InteractiveMode {
         }
     }
     stop() {
-        this.unregisterSignalHandlers();
-        if (this.settingsManager.getShowTerminalProgress()) {
-            this.ui.terminal.setProgress(false);
-        }
         if (this.loadingAnimation) {
             this.loadingAnimation.stop();
             this.loadingAnimation = undefined;

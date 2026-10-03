@@ -137,16 +137,16 @@ function readClipboardImageViaPowerShell() {
         if (!winPath) {
             return null;
         }
-        const psQuotedWinPath = winPath.replaceAll("'", "''");
         const psScript = [
             "Add-Type -AssemblyName System.Windows.Forms",
             "Add-Type -AssemblyName System.Drawing",
-            `$path = '${psQuotedWinPath}'`,
+            "$path = $env:PI_WSL_CLIPBOARD_IMAGE_PATH",
             "$img = [System.Windows.Forms.Clipboard]::GetImage()",
             "if ($img) { $img.Save($path, [System.Drawing.Imaging.ImageFormat]::Png); Write-Output 'ok' } else { Write-Output 'empty' }",
         ].join("; ");
         const result = runCommand("powershell.exe", ["-NoProfile", "-Command", psScript], {
             timeoutMs: DEFAULT_POWERSHELL_TIMEOUT_MS,
+            env: { ...process.env, PI_WSL_CLIPBOARD_IMAGE_PATH: winPath },
         });
         if (!result.ok) {
             return null;

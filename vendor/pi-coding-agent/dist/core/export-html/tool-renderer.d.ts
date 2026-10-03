@@ -30,5 +30,11 @@ export interface ToolHtmlRenderer {
         expanded?: string;
     } | undefined;
 }
+/**
+ * Create a tool HTML renderer.
+ *
+ * The renderer looks up tool definitions and invokes their renderCall/renderResult
+ * methods, converting the resulting TUI Component output (ANSI) to HTML.
+ */
 export declare function createToolHtmlRenderer(deps: ToolHtmlRendererDeps): ToolHtmlRenderer;
 //# sourceMappingURL=tool-renderer.d.ts.map

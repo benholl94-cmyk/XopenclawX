@@ -24,17 +24,16 @@ export class LoginDialogComponent extends Container {
         this._focused = value;
         this.input.focused = value;
     }
-    constructor(tui, providerId, onComplete, providerNameOverride, titleOverride) {
+    constructor(tui, providerId, onComplete) {
         super();
         this.onComplete = onComplete;
         this.tui = tui;
         const providerInfo = getOAuthProviders().find((p) => p.id === providerId);
-        const providerName = providerNameOverride || providerInfo?.name || providerId;
-        const title = titleOverride ?? `Login to ${providerName}`;
+        const providerName = providerInfo?.name || providerId;
         // Top border
         this.addChild(new DynamicBorder());
         // Title
-        this.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
+        this.addChild(new Text(theme.fg("warning", `Login to ${providerName}`), 1, 0));
         // Dynamic content area
         this.contentContainer = new Container();
         this.addChild(this.contentContainer);
@@ -71,8 +70,7 @@ export class LoginDialogComponent extends Container {
     showAuth(url, instructions) {
         this.contentContainer.clear();
         this.contentContainer.addChild(new Spacer(1));
-        const linkedUrl = `\x1b]8;;${url}\x07${url}\x1b]8;;\x07`;
-        this.contentContainer.addChild(new Text(theme.fg("accent", linkedUrl), 1, 0));
+        this.contentContainer.addChild(new Text(theme.fg("accent", url), 1, 0));
         const clickHint = process.platform === "darwin" ? "Cmd+click to open" : "Ctrl+click to open";
         const hyperlink = `\x1b]8;;${url}\x07${clickHint}\x1b]8;;\x07`;
         this.contentContainer.addChild(new Text(theme.fg("dim", hyperlink), 1, 0));
@@ -117,19 +115,6 @@ export class LoginDialogComponent extends Container {
             this.inputResolver = resolve;
             this.inputRejecter = reject;
         });
-    }
-    /**
-     * Show informational text without prompting for input.
-     */
-    showInfo(lines) {
-        this.contentContainer.clear();
-        this.contentContainer.addChild(new Spacer(1));
-        for (const line of lines) {
-            this.contentContainer.addChild(new Text(line, 1, 0));
-        }
-        this.contentContainer.addChild(new Spacer(1));
-        this.contentContainer.addChild(new Text(`(${keyHint("tui.select.cancel", "to close")})`, 1, 0));
-        this.tui.requestRender();
     }
     /**
      * Show waiting message (for polling flows like GitHub Copilot)

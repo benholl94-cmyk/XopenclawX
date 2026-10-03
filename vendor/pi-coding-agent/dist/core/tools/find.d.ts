@@ -1,11 +1,11 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { type Static, Type } from "typebox";
+import { type Static } from "@sinclair/typebox";
 import type { ToolDefinition } from "../extensions/types.js";
 import { type TruncationResult } from "./truncate.js";
-declare const findSchema: Type.TObject<{
-    pattern: Type.TString;
-    path: Type.TOptional<Type.TString>;
-    limit: Type.TOptional<Type.TNumber>;
+declare const findSchema: import("@sinclair/typebox").TObject<{
+    pattern: import("@sinclair/typebox").TString;
+    path: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TString>;
+    limit: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TNumber>;
 }>;
 export type FindToolInput = Static<typeof findSchema>;
 export interface FindToolDetails {
@@ -31,5 +31,16 @@ export interface FindToolOptions {
 }
 export declare function createFindToolDefinition(cwd: string, options?: FindToolOptions): ToolDefinition<typeof findSchema, FindToolDetails | undefined>;
 export declare function createFindTool(cwd: string, options?: FindToolOptions): AgentTool<typeof findSchema>;
+/** Default find tool using process.cwd() for backwards compatibility. */
+export declare const findToolDefinition: ToolDefinition<import("@sinclair/typebox").TObject<{
+    pattern: import("@sinclair/typebox").TString;
+    path: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TString>;
+    limit: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TNumber>;
+}>, FindToolDetails | undefined, any>;
+export declare const findTool: AgentTool<import("@sinclair/typebox").TObject<{
+    pattern: import("@sinclair/typebox").TString;
+    path: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TString>;
+    limit: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TNumber>;
+}>, any>;
 export {};
 //# sourceMappingURL=find.d.ts.map

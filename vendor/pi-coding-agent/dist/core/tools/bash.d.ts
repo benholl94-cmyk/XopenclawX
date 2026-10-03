@@ -1,10 +1,10 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { type Static, Type } from "typebox";
+import { type Static } from "@sinclair/typebox";
 import type { ToolDefinition } from "../extensions/types.js";
 import { type TruncationResult } from "./truncate.js";
-declare const bashSchema: Type.TObject<{
-    command: Type.TString;
-    timeout: Type.TOptional<Type.TNumber>;
+declare const bashSchema: import("@sinclair/typebox").TObject<{
+    command: import("@sinclair/typebox").TString;
+    timeout: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TNumber>;
 }>;
 export type BashToolInput = Static<typeof bashSchema>;
 export interface BashToolDetails {
@@ -38,9 +38,7 @@ export interface BashOperations {
  * This is useful for extensions that intercept user_bash and still want pi's
  * standard local shell behavior while wrapping or rewriting commands.
  */
-export declare function createLocalBashOperations(options?: {
-    shellPath?: string;
-}): BashOperations;
+export declare function createLocalBashOperations(): BashOperations;
 export interface BashSpawnContext {
     command: string;
     cwd: string;
@@ -52,8 +50,6 @@ export interface BashToolOptions {
     operations?: BashOperations;
     /** Command prefix prepended to every command (for example shell setup commands) */
     commandPrefix?: string;
-    /** Optional explicit shell path from settings */
-    shellPath?: string;
     /** Hook to adjust command, cwd, or env before execution */
     spawnHook?: BashSpawnHook;
 }
@@ -64,5 +60,14 @@ type BashRenderState = {
 };
 export declare function createBashToolDefinition(cwd: string, options?: BashToolOptions): ToolDefinition<typeof bashSchema, BashToolDetails | undefined, BashRenderState>;
 export declare function createBashTool(cwd: string, options?: BashToolOptions): AgentTool<typeof bashSchema>;
+/** Default bash tool using process.cwd() for backwards compatibility. */
+export declare const bashToolDefinition: ToolDefinition<import("@sinclair/typebox").TObject<{
+    command: import("@sinclair/typebox").TString;
+    timeout: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TNumber>;
+}>, BashToolDetails | undefined, BashRenderState>;
+export declare const bashTool: AgentTool<import("@sinclair/typebox").TObject<{
+    command: import("@sinclair/typebox").TString;
+    timeout: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TNumber>;
+}>, any>;
 export {};
 //# sourceMappingURL=bash.d.ts.map

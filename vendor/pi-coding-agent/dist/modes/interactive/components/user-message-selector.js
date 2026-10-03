@@ -10,12 +10,11 @@ class UserMessageList {
     onSelect;
     onCancel;
     maxVisible = 10; // Max messages visible
-    constructor(messages, initialSelectedId) {
+    constructor(messages) {
         // Store messages in chronological order (oldest to newest)
         this.messages = messages;
-        const initialIndex = initialSelectedId ? messages.findIndex((message) => message.id === initialSelectedId) : -1;
-        // Start with selected message if provided, else default to the most recent
-        this.selectedIndex = initialIndex >= 0 ? initialIndex : Math.max(0, messages.length - 1);
+        // Start with the last (most recent) message selected
+        this.selectedIndex = Math.max(0, messages.length - 1);
     }
     invalidate() {
         // No cached state to invalidate currently
@@ -85,17 +84,17 @@ class UserMessageList {
  */
 export class UserMessageSelectorComponent extends Container {
     messageList;
-    constructor(messages, onSelect, onCancel, initialSelectedId) {
+    constructor(messages, onSelect, onCancel) {
         super();
         // Add header
         this.addChild(new Spacer(1));
-        this.addChild(new Text(theme.bold("Fork from Message"), 1, 0));
-        this.addChild(new Text(theme.fg("muted", "Select a user message to copy the active path up to that point into a new session"), 1, 0));
+        this.addChild(new Text(theme.bold("Branch from Message"), 1, 0));
+        this.addChild(new Text(theme.fg("muted", "Select a message to create a new branch from that point"), 1, 0));
         this.addChild(new Spacer(1));
         this.addChild(new DynamicBorder());
         this.addChild(new Spacer(1));
         // Create message list
-        this.messageList = new UserMessageList(messages, initialSelectedId);
+        this.messageList = new UserMessageList(messages);
         this.messageList.onSelect = onSelect;
         this.messageList.onCancel = onCancel;
         this.addChild(this.messageList);

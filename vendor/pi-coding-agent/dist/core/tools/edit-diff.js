@@ -311,9 +311,8 @@ export async function computeEditsDiff(path, edits, cwd) {
         try {
             await access(absolutePath, constants.R_OK);
         }
-        catch (error) {
-            const errorMessage = error instanceof Error && "code" in error ? `Error code: ${error.code}` : String(error);
-            return { error: `Could not edit file: ${path}. ${errorMessage}.` };
+        catch {
+            return { error: `File not found: ${path}` };
         }
         // Read the file
         const rawContent = await readFile(absolutePath, "utf-8");

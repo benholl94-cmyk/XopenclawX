@@ -1,10 +1,10 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { type Static, Type } from "typebox";
+import { type Static } from "@sinclair/typebox";
 import type { ToolDefinition } from "../extensions/types.js";
 import { type TruncationResult } from "./truncate.js";
-declare const lsSchema: Type.TObject<{
-    path: Type.TOptional<Type.TString>;
-    limit: Type.TOptional<Type.TNumber>;
+declare const lsSchema: import("@sinclair/typebox").TObject<{
+    path: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TString>;
+    limit: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TNumber>;
 }>;
 export type LsToolInput = Static<typeof lsSchema>;
 export interface LsToolDetails {
@@ -33,5 +33,14 @@ export interface LsToolOptions {
 }
 export declare function createLsToolDefinition(cwd: string, options?: LsToolOptions): ToolDefinition<typeof lsSchema, LsToolDetails | undefined>;
 export declare function createLsTool(cwd: string, options?: LsToolOptions): AgentTool<typeof lsSchema>;
+/** Default ls tool using process.cwd() for backwards compatibility. */
+export declare const lsToolDefinition: ToolDefinition<import("@sinclair/typebox").TObject<{
+    path: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TString>;
+    limit: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TNumber>;
+}>, LsToolDetails | undefined, any>;
+export declare const lsTool: AgentTool<import("@sinclair/typebox").TObject<{
+    path: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TString>;
+    limit: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TNumber>;
+}>, any>;
 export {};
 //# sourceMappingURL=ls.d.ts.map

@@ -8,8 +8,7 @@ import type { ResourceDiagnostic } from "../diagnostics.js";
 import type { KeybindingsConfig } from "../keybindings.js";
 import type { ModelRegistry } from "../model-registry.js";
 import type { SessionManager } from "../session-manager.js";
-import type { BuildSystemPromptOptions } from "../system-prompt.js";
-import type { BeforeAgentStartEvent, BeforeAgentStartEventResult, BeforeProviderRequestEvent, ContextEvent, Extension, ExtensionActions, ExtensionCommandContext, ExtensionCommandContextActions, ExtensionContext, ExtensionContextActions, ExtensionError, ExtensionEvent, ExtensionFlag, ExtensionRuntime, ExtensionShortcut, ExtensionUIContext, InputEvent, InputEventResult, InputSource, MessageEndEvent, MessageRenderer, ProviderConfig, RegisteredTool, ReplacedSessionContext, ResolvedCommand, ResourcesDiscoverEvent, SessionBeforeCompactResult, SessionBeforeForkResult, SessionBeforeSwitchResult, SessionBeforeTreeResult, SessionShutdownEvent, ToolCallEvent, ToolCallEventResult, ToolResultEvent, ToolResultEventResult, UserBashEvent, UserBashEventResult } from "./types.js";
+import type { BeforeAgentStartEvent, BeforeAgentStartEventResult, BeforeProviderRequestEvent, ContextEvent, Extension, ExtensionActions, ExtensionCommandContext, ExtensionCommandContextActions, ExtensionContext, ExtensionContextActions, ExtensionError, ExtensionEvent, ExtensionFlag, ExtensionRuntime, ExtensionShortcut, ExtensionUIContext, InputEvent, InputEventResult, InputSource, MessageRenderer, ProviderConfig, RegisteredTool, ResolvedCommand, ResourcesDiscoverEvent, SessionBeforeCompactResult, SessionBeforeForkResult, SessionBeforeSwitchResult, SessionBeforeTreeResult, ToolCallEvent, ToolCallEventResult, ToolResultEvent, ToolResultEventResult, UserBashEvent, UserBashEventResult } from "./types.js";
 /** Combined result from all before_agent_start handlers */
 interface BeforeAgentStartCombinedResult {
     messages?: NonNullable<BeforeAgentStartEventResult["message"]>[];
@@ -19,7 +18,7 @@ interface BeforeAgentStartCombinedResult {
  * Events handled by the generic emit() method.
  * Events with dedicated emitXxx() methods are excluded for stronger type safety.
  */
-type RunnerEmitEvent = Exclude<ExtensionEvent, ToolCallEvent | ToolResultEvent | UserBashEvent | ContextEvent | BeforeProviderRequestEvent | BeforeAgentStartEvent | MessageEndEvent | ResourcesDiscoverEvent | InputEvent>;
+type RunnerEmitEvent = Exclude<ExtensionEvent, ToolCallEvent | ToolResultEvent | UserBashEvent | ContextEvent | BeforeProviderRequestEvent | BeforeAgentStartEvent | ResourcesDiscoverEvent | InputEvent>;
 type RunnerEmitResult<TEvent extends RunnerEmitEvent> = TEvent extends {
     type: "session_before_switch";
 } ? SessionBeforeSwitchResult | undefined : TEvent extends {
@@ -33,14 +32,10 @@ export type ExtensionErrorListener = (error: ExtensionError) => void;
 export type NewSessionHandler = (options?: {
     parentSession?: string;
     setup?: (sessionManager: SessionManager) => Promise<void>;
-    withSession?: (ctx: ReplacedSessionContext) => Promise<void>;
 }) => Promise<{
     cancelled: boolean;
 }>;
-export type ForkHandler = (entryId: string, options?: {
-    position?: "before" | "at";
-    withSession?: (ctx: ReplacedSessionContext) => Promise<void>;
-}) => Promise<{
+export type ForkHandler = (entryId: string) => Promise<{
     cancelled: boolean;
 }>;
 export type NavigateTreeHandler = (targetId: string, options?: {
@@ -51,9 +46,7 @@ export type NavigateTreeHandler = (targetId: string, options?: {
 }) => Promise<{
     cancelled: boolean;
 }>;
-export type SwitchSessionHandler = (sessionPath: string, options?: {
-    withSession?: (ctx: ReplacedSessionContext) => Promise<void>;
-}) => Promise<{
+export type SwitchSessionHandler = (sessionPath: string) => Promise<{
     cancelled: boolean;
 }>;
 export type ReloadHandler = () => Promise<void>;
@@ -62,7 +55,7 @@ export type ShutdownHandler = () => void;
  * Helper function to emit session_shutdown event to extensions.
  * Returns true if the event was emitted, false if there were no handlers.
  */
-export declare function emitSessionShutdownEvent(extensionRunner: ExtensionRunner, event: SessionShutdownEvent): Promise<boolean>;
+export declare function emitSessionShutdownEvent(extensionRunner: ExtensionRunner | undefined): Promise<boolean>;
 export declare class ExtensionRunner {
     private extensions;
     private runtime;
@@ -88,7 +81,6 @@ export declare class ExtensionRunner {
     private shutdownHandler;
     private shortcutDiagnostics;
     private commandDiagnostics;
-    private staleMessage;
     constructor(extensions: Extension[], runtime: ExtensionRuntime, cwd: string, sessionManager: SessionManager, modelRegistry: ModelRegistry);
     bindCore(actions: ExtensionActions, contextActions: ExtensionContextActions, providerActions?: {
         registerProvider?: (name: string, config: ProviderConfig) => void;
@@ -108,8 +100,6 @@ export declare class ExtensionRunner {
     getFlagValues(): Map<string, boolean | string>;
     getShortcuts(resolvedKeybindings: KeybindingsConfig): Map<KeyId, ExtensionShortcut>;
     getShortcutDiagnostics(): ResourceDiagnostic[];
-    invalidate(message?: string): void;
-    private assertActive;
     onError(listener: ExtensionErrorListener): () => void;
     emitError(error: ExtensionError): void;
     hasHandlers(eventType: string): boolean;
@@ -131,13 +121,12 @@ export declare class ExtensionRunner {
     createCommandContext(): ExtensionCommandContext;
     private isSessionBeforeEvent;
     emit<TEvent extends RunnerEmitEvent>(event: TEvent): Promise<RunnerEmitResult<TEvent>>;
-    emitMessageEnd(event: MessageEndEvent): Promise<AgentMessage | undefined>;
     emitToolResult(event: ToolResultEvent): Promise<ToolResultEventResult | undefined>;
     emitToolCall(event: ToolCallEvent): Promise<ToolCallEventResult | undefined>;
     emitUserBash(event: UserBashEvent): Promise<UserBashEventResult | undefined>;
     emitContext(messages: AgentMessage[]): Promise<AgentMessage[]>;
     emitBeforeProviderRequest(payload: unknown): Promise<unknown>;
-    emitBeforeAgentStart(prompt: string, images: ImageContent[] | undefined, systemPrompt: string, systemPromptOptions: BuildSystemPromptOptions): Promise<BeforeAgentStartCombinedResult | undefined>;
+    emitBeforeAgentStart(prompt: string, images: ImageContent[] | undefined, systemPrompt: string): Promise<BeforeAgentStartCombinedResult | undefined>;
     emitResourcesDiscover(cwd: string, reason: ResourcesDiscoverEvent["reason"]): Promise<{
         skillPaths: Array<{
             path: string;

@@ -16,7 +16,7 @@ import type { Agent, AgentEvent, AgentMessage, AgentState, AgentTool, ThinkingLe
 import type { ImageContent, Model, TextContent } from "@mariozechner/pi-ai";
 import { type BashResult } from "./bash-executor.js";
 import { type CompactionResult } from "./compaction/index.js";
-import { type ContextUsage, type ExtensionCommandContextActions, type ExtensionErrorListener, ExtensionRunner, type ExtensionUIContext, type InputSource, type ReplacedSessionContext, type SessionStartEvent, type ShutdownHandler, type ToolDefinition, type ToolInfo } from "./extensions/index.js";
+import { type ContextUsage, type ExtensionCommandContextActions, type ExtensionErrorListener, ExtensionRunner, type ExtensionUIContext, type InputSource, type SessionStartEvent, type ShutdownHandler, type ToolDefinition, type ToolInfo } from "./extensions/index.js";
 import type { CustomMessage } from "./messages.js";
 import type { ModelRegistry } from "./model-registry.js";
 import { type PromptTemplate } from "./prompt-templates.js";
@@ -44,12 +44,6 @@ export type AgentSessionEvent = AgentEvent | {
 } | {
     type: "compaction_start";
     reason: "manual" | "threshold" | "overflow";
-} | {
-    type: "session_info_changed";
-    name: string | undefined;
-} | {
-    type: "thinking_level_changed";
-    level: ThinkingLevel;
 } | {
     type: "compaction_end";
     reason: "manual" | "threshold" | "overflow";
@@ -89,8 +83,6 @@ export interface AgentSessionConfig {
     modelRegistry: ModelRegistry;
     /** Initial active built-in tool names. Default: [read, bash, edit, write] */
     initialActiveToolNames?: string[];
-    /** Optional allowlist of tool names. When provided, only these tool names are exposed. */
-    allowedToolNames?: string[];
     /**
      * Override base tools (useful for custom runtimes).
      *
@@ -121,8 +113,6 @@ export interface PromptOptions {
     streamingBehavior?: "steer" | "followUp";
     /** Source of input for extension input event handlers. Defaults to "interactive". */
     source?: InputSource;
-    /** Internal hook used by RPC mode to observe prompt preflight acceptance or rejection. */
-    preflightResult?: (success: boolean) => void;
 }
 /** Result from cycleModel() */
 export interface ModelCycleResult {
@@ -182,7 +172,6 @@ export declare class AgentSession {
     private _cwd;
     private _extensionRunnerRef?;
     private _initialActiveToolNames?;
-    private _allowedToolNames?;
     private _baseToolsOverride?;
     private _sessionStartEvent;
     private _extensionUIContext?;
@@ -196,7 +185,6 @@ export declare class AgentSession {
     private _toolPromptSnippets;
     private _toolPromptGuidelines;
     private _baseSystemPrompt;
-    private _baseSystemPromptOptions;
     constructor(config: AgentSessionConfig);
     /** Model registry for API key resolution and model discovery */
     get modelRegistry(): ModelRegistry;
@@ -225,7 +213,6 @@ export declare class AgentSession {
     private _getUserMessageText;
     /** Find the last assistant message in agent state (including aborted ones) */
     private _findLastAssistantMessage;
-    private _replaceMessageInPlace;
     private _emitExtensionEvent;
     /**
      * Subscribe to agent events.
@@ -426,6 +413,10 @@ export declare class AgentSession {
      */
     getAvailableThinkingLevels(): ThinkingLevel[];
     /**
+     * Check if current model supports xhigh thinking level.
+     */
+    supportsXhighThinking(): boolean;
+    /**
      * Check if current model supports thinking/reasoning.
      */
     supportsThinking(): boolean;
@@ -582,7 +573,6 @@ export declare class AgentSession {
      * @returns Text content, or undefined if no assistant message exists
      */
     getLastAssistantText(): string | undefined;
-    createReplacedSessionContext(): ReplacedSessionContext;
     /**
      * Check if extensions have handlers for a specific event type.
      */
@@ -590,6 +580,6 @@ export declare class AgentSession {
     /**
      * Get the extension runner (for setting UI context and error handlers).
      */
-    get extensionRunner(): ExtensionRunner;
+    get extensionRunner(): ExtensionRunner | undefined;
 }
 //# sourceMappingURL=agent-session.d.ts.map

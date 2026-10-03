@@ -2,9 +2,8 @@
  * Interactive mode for the coding agent.
  * Handles TUI rendering and user interaction, delegating business logic to AgentSession.
  */
-import { type ImageContent } from "@mariozechner/pi-ai";
-import { type AgentSessionRuntime } from "../../core/agent-session-runtime.js";
-export declare function isApiKeyLoginProvider(providerId: string, oauthProviderIds: ReadonlySet<string>, builtInProviderIds?: ReadonlySet<string>): boolean;
+import type { ImageContent } from "@mariozechner/pi-ai";
+import type { AgentSessionRuntime } from "../../core/agent-session-runtime.js";
 /**
  * Options for InteractiveMode initialization.
  */
@@ -31,9 +30,7 @@ export declare class InteractiveMode {
     private statusContainer;
     private defaultEditor;
     private editor;
-    private editorComponentFactory;
     private autocompleteProvider;
-    private autocompleteProviderWrappers;
     private fdPath;
     private editorContainer;
     private footer;
@@ -43,9 +40,7 @@ export declare class InteractiveMode {
     private isInitialized;
     private onInputCallback?;
     private loadingAnimation;
-    private workingMessage;
-    private workingVisible;
-    private workingIndicatorOptions;
+    private pendingWorkingMessage;
     private readonly defaultWorkingMessage;
     private readonly defaultHiddenThinkingLabel;
     private hiddenThinkingLabel;
@@ -63,14 +58,12 @@ export declare class InteractiveMode {
     private hideThinkingBlock;
     private skillCommands;
     private unsubscribe?;
-    private signalCleanupHandlers;
     private isBashMode;
     private bashComponent;
     private pendingBashComponents;
     private autoCompactionLoader;
     private autoCompactionEscapeHandler?;
     private retryLoader;
-    private retryCountdown;
     private retryEscapeHandler?;
     private compactionQueuedMessages;
     private shutdownRequested;
@@ -94,8 +87,7 @@ export declare class InteractiveMode {
     private getAutocompleteSourceTag;
     private prefixAutocompleteDescription;
     private getBuiltInCommandConflictDiagnostics;
-    private createBaseAutocompleteProvider;
-    private setupAutocompleteProvider;
+    private setupAutocomplete;
     private showStartupNoticesIfNeeded;
     init(): Promise<void>;
     /**
@@ -107,6 +99,7 @@ export declare class InteractiveMode {
      * Initializes the UI, shows warnings, processes initial messages, and starts the interactive loop.
      */
     run(): Promise<void>;
+    private checkForNewVersion;
     private checkForPackageUpdates;
     private checkTmuxKeyboardSetup;
     /**
@@ -114,22 +107,12 @@ export declare class InteractiveMode {
      * Only shows new entries since last seen version, skips for resumed sessions.
      */
     private getChangelogForDisplay;
-    private reportInstallTelemetry;
     private getMarkdownThemeWithSettings;
     private formatDisplayPath;
-    private formatExtensionDisplayPath;
-    private formatContextPath;
-    private getStartupExpansionState;
     /**
      * Get a short path relative to the package root for display.
      */
     private getShortPath;
-    private getCompactPathLabel;
-    private getCompactPackageSourceLabel;
-    private getCompactExtensionLabel;
-    private getCompactDisplayPathSegments;
-    private getCompactNonPackageExtensionLabel;
-    private getCompactExtensionLabels;
     private getDisplaySourceInfo;
     private getScopeGroup;
     private isPackageSource;
@@ -141,7 +124,7 @@ export declare class InteractiveMode {
     private showLoadedResources;
     private bindCurrentSessionExtensions;
     private applyRuntimeSettings;
-    private rebindCurrentSession;
+    private handleRuntimeSessionChange;
     private handleFatalRuntimeError;
     private renderCurrentSessionState;
     /**
@@ -156,11 +139,6 @@ export declare class InteractiveMode {
      * Set extension status text in the footer.
      */
     private setExtensionStatus;
-    private getWorkingLoaderMessage;
-    private createWorkingLoader;
-    private stopWorkingLoader;
-    private setWorkingVisible;
-    private setWorkingIndicator;
     private setHiddenThinkingLabel;
     /**
      * Set an extension widget (string array or custom component).
@@ -257,15 +235,11 @@ export declare class InteractiveMode {
     private handleCtrlD;
     /**
      * Gracefully shutdown the agent.
-     * Stops the TUI before emitting shutdown events so extension UI cleanup cannot
-     * repaint the final frame while the process is exiting.
+     * Emits shutdown event to extensions, then exits.
      */
     private isShuttingDown;
     private shutdown;
-    private emergencyTerminalExit;
     private checkShutdownRequested;
-    private registerSignalHandlers;
-    private unregisterSignalHandlers;
     private handleCtrlZ;
     private handleFollowUp;
     private handleDequeue;
@@ -312,23 +286,13 @@ export declare class InteractiveMode {
     private showModelSelector;
     private showModelsSelector;
     private showUserMessageSelector;
-    private handleCloneCommand;
     private showTreeSelector;
     private showSessionSelector;
     private handleResumeSession;
-    private getLoginProviderOptions;
-    private getLogoutProviderOptions;
-    private showLoginAuthTypeSelector;
-    private showLoginProviderSelector;
     private showOAuthSelector;
-    private completeProviderAuthentication;
-    private showBedrockSetupDialog;
-    private showApiKeyLoginDialog;
-    private showOAuthLoginSelect;
     private showLoginDialog;
     private handleReloadCommand;
     private handleExportCommand;
-    private getPathCommandArgument;
     private handleImportCommand;
     private handleShareCommand;
     private handleCopyCommand;

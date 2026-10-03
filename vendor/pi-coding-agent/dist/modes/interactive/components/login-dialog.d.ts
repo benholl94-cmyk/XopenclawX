@@ -13,7 +13,7 @@ export declare class LoginDialogComponent extends Container implements Focusable
     private _focused;
     get focused(): boolean;
     set focused(value: boolean);
-    constructor(tui: TUI, providerId: string, onComplete: (success: boolean, message?: string) => void, providerNameOverride?: string, titleOverride?: string);
+    constructor(tui: TUI, providerId: string, onComplete: (success: boolean, message?: string) => void);
     get signal(): AbortSignal;
     private cancel;
     /**
@@ -29,10 +29,6 @@ export declare class LoginDialogComponent extends Container implements Focusable
      * Note: Does NOT clear content, appends to existing (preserves URL from showAuth)
      */
     showPrompt(message: string, placeholder?: string): Promise<string>;
-    /**
-     * Show informational text without prompting for input.
-     */
-    showInfo(lines: string[]): void;
     /**
      * Show waiting message (for polling flows like GitHub Copilot)
      */

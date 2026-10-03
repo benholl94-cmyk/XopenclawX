@@ -1,7 +1,9 @@
 import { existsSync } from "node:fs";
 import { delimiter } from "node:path";
 import { spawn, spawnSync } from "child_process";
-import { getBinDir } from "../config.js";
+import { getBinDir, getSettingsPath } from "../config.js";
+import { SettingsManager } from "../core/settings-manager.js";
+let cachedShellConfig = null;
 /**
  * Find bash executable on PATH (cross-platform)
  */
@@ -38,19 +40,25 @@ function findBashOnPath() {
     return null;
 }
 /**
- * Resolve shell configuration based on platform and an optional explicit shell path.
+ * Get shell configuration based on platform.
  * Resolution order:
- * 1. User-specified shellPath
+ * 1. User-specified shellPath in settings.json
  * 2. On Windows: Git Bash in known locations, then bash on PATH
  * 3. On Unix: /bin/bash, then bash on PATH, then fallback to sh
  */
-export function getShellConfig(customShellPath) {
+export function getShellConfig() {
+    if (cachedShellConfig) {
+        return cachedShellConfig;
+    }
+    const settings = SettingsManager.create();
+    const customShellPath = settings.getShellPath();
     // 1. Check user-specified shell path
     if (customShellPath) {
         if (existsSync(customShellPath)) {
-            return { shell: customShellPath, args: ["-c"] };
+            cachedShellConfig = { shell: customShellPath, args: ["-c"] };
+            return cachedShellConfig;
         }
-        throw new Error(`Custom shell path not found: ${customShellPath}`);
+        throw new Error(`Custom shell path not found: ${customShellPath}\nPlease update shellPath in ${getSettingsPath()}`);
     }
     if (process.platform === "win32") {
         // 2. Try Git Bash in known locations
@@ -65,29 +73,34 @@ export function getShellConfig(customShellPath) {
         }
         for (const path of paths) {
             if (existsSync(path)) {
-                return { shell: path, args: ["-c"] };
+                cachedShellConfig = { shell: path, args: ["-c"] };
+                return cachedShellConfig;
             }
         }
         // 3. Fallback: search bash.exe on PATH (Cygwin, MSYS2, WSL, etc.)
         const bashOnPath = findBashOnPath();
         if (bashOnPath) {
-            return { shell: bashOnPath, args: ["-c"] };
+            cachedShellConfig = { shell: bashOnPath, args: ["-c"] };
+            return cachedShellConfig;
         }
         throw new Error(`No bash shell found. Options:\n` +
             `  1. Install Git for Windows: https://git-scm.com/download/win\n` +
             `  2. Add your bash to PATH (Cygwin, MSYS2, etc.)\n` +
-            "  3. Set shellPath in settings.json\n\n" +
+            `  3. Set shellPath in ${getSettingsPath()}\n\n` +
             `Searched Git Bash in:\n${paths.map((p) => `  ${p}`).join("\n")}`);
     }
     // Unix: try /bin/bash, then bash on PATH, then fallback to sh
     if (existsSync("/bin/bash")) {
-        return { shell: "/bin/bash", args: ["-c"] };
+        cachedShellConfig = { shell: "/bin/bash", args: ["-c"] };
+        return cachedShellConfig;
     }
     const bashOnPath = findBashOnPath();
     if (bashOnPath) {
-        return { shell: bashOnPath, args: ["-c"] };
+        cachedShellConfig = { shell: bashOnPath, args: ["-c"] };
+        return cachedShellConfig;
     }
-    return { shell: "sh", args: ["-c"] };
+    cachedShellConfig = { shell: "sh", args: ["-c"] };
+    return cachedShellConfig;
 }
 export function getShellEnv() {
     const binDir = getBinDir();
@@ -137,23 +150,6 @@ export function sanitizeBinaryOutput(str) {
         return true;
     })
         .join("");
-}
-/**
- * Detached child processes must be tracked so they can be killed on parent
- * shutdown signals (SIGHUP/SIGTERM).
- */
-const trackedDetachedChildPids = new Set();
-export function trackDetachedChildPid(pid) {
-    trackedDetachedChildPids.add(pid);
-}
-export function untrackDetachedChildPid(pid) {
-    trackedDetachedChildPids.delete(pid);
-}
-export function killTrackedDetachedChildren() {
-    for (const pid of trackedDetachedChildPids) {
-        killProcessTree(pid);
-    }
-    trackedDetachedChildPids.clear();
 }
 /**
  * Kill a process and all its children (cross-platform)

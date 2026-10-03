@@ -17,7 +17,7 @@ declare class SessionList implements Component, Focusable {
     private keybindings;
     private showPath;
     private confirmingDeletePath;
-    private currentSessionCanonicalPath?;
+    private currentSessionFilePath?;
     onSelect?: (sessionPath: string) => void;
     onCancel?: () => void;
     onExit: () => void;
@@ -40,7 +40,6 @@ declare class SessionList implements Component, Focusable {
     private filterSessions;
     private setConfirmingDeletePath;
     private startDeleteConfirmationForSelectedSession;
-    private isCurrentSessionPath;
     invalidate(): void;
     render(width: number): string[];
     private buildTreePrefix;

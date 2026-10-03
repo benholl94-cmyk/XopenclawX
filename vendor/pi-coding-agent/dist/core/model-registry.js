@@ -3,99 +3,55 @@
  */
 import { getModels, getProviders, registerApiProvider, resetApiProviders, } from "@mariozechner/pi-ai";
 import { registerOAuthProvider, resetOAuthProviders } from "@mariozechner/pi-ai/oauth";
+import { Type } from "@sinclair/typebox";
+import AjvModule from "ajv";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import { Type } from "typebox";
-import { Compile } from "typebox/compile";
 import { getAgentDir } from "../config.js";
-import { BUILT_IN_PROVIDER_DISPLAY_NAMES } from "./provider-display-names.js";
 import { clearConfigValueCache, resolveConfigValueOrThrow, resolveConfigValueUncached, resolveHeadersOrThrow, } from "./resolve-config-value.js";
+const Ajv = AjvModule.default || AjvModule;
+const ajv = new Ajv();
 // Schema for OpenRouter routing preferences
-const PercentileCutoffsSchema = Type.Object({
-    p50: Type.Optional(Type.Number()),
-    p75: Type.Optional(Type.Number()),
-    p90: Type.Optional(Type.Number()),
-    p99: Type.Optional(Type.Number()),
-});
 const OpenRouterRoutingSchema = Type.Object({
-    allow_fallbacks: Type.Optional(Type.Boolean()),
-    require_parameters: Type.Optional(Type.Boolean()),
-    data_collection: Type.Optional(Type.Union([Type.Literal("deny"), Type.Literal("allow")])),
-    zdr: Type.Optional(Type.Boolean()),
-    enforce_distillable_text: Type.Optional(Type.Boolean()),
-    order: Type.Optional(Type.Array(Type.String())),
     only: Type.Optional(Type.Array(Type.String())),
-    ignore: Type.Optional(Type.Array(Type.String())),
-    quantizations: Type.Optional(Type.Array(Type.String())),
-    sort: Type.Optional(Type.Union([
-        Type.String(),
-        Type.Object({
-            by: Type.Optional(Type.String()),
-            partition: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-        }),
-    ])),
-    max_price: Type.Optional(Type.Object({
-        prompt: Type.Optional(Type.Union([Type.Number(), Type.String()])),
-        completion: Type.Optional(Type.Union([Type.Number(), Type.String()])),
-        image: Type.Optional(Type.Union([Type.Number(), Type.String()])),
-        audio: Type.Optional(Type.Union([Type.Number(), Type.String()])),
-        request: Type.Optional(Type.Union([Type.Number(), Type.String()])),
-    })),
-    preferred_min_throughput: Type.Optional(Type.Union([Type.Number(), PercentileCutoffsSchema])),
-    preferred_max_latency: Type.Optional(Type.Union([Type.Number(), PercentileCutoffsSchema])),
+    order: Type.Optional(Type.Array(Type.String())),
 });
 // Schema for Vercel AI Gateway routing preferences
 const VercelGatewayRoutingSchema = Type.Object({
     only: Type.Optional(Type.Array(Type.String())),
     order: Type.Optional(Type.Array(Type.String())),
 });
-// Schema for thinking level support and provider-specific values
-const ThinkingLevelMapValueSchema = Type.Union([Type.String(), Type.Null()]);
-const ThinkingLevelMapSchema = Type.Object({
-    off: Type.Optional(ThinkingLevelMapValueSchema),
-    minimal: Type.Optional(ThinkingLevelMapValueSchema),
-    low: Type.Optional(ThinkingLevelMapValueSchema),
-    medium: Type.Optional(ThinkingLevelMapValueSchema),
-    high: Type.Optional(ThinkingLevelMapValueSchema),
-    xhigh: Type.Optional(ThinkingLevelMapValueSchema),
+// Schema for OpenAI compatibility settings
+const ReasoningEffortMapSchema = Type.Object({
+    minimal: Type.Optional(Type.String()),
+    low: Type.Optional(Type.String()),
+    medium: Type.Optional(Type.String()),
+    high: Type.Optional(Type.String()),
+    xhigh: Type.Optional(Type.String()),
 });
 const OpenAICompletionsCompatSchema = Type.Object({
     supportsStore: Type.Optional(Type.Boolean()),
     supportsDeveloperRole: Type.Optional(Type.Boolean()),
     supportsReasoningEffort: Type.Optional(Type.Boolean()),
+    reasoningEffortMap: Type.Optional(ReasoningEffortMapSchema),
     supportsUsageInStreaming: Type.Optional(Type.Boolean()),
     maxTokensField: Type.Optional(Type.Union([Type.Literal("max_completion_tokens"), Type.Literal("max_tokens")])),
     requiresToolResultName: Type.Optional(Type.Boolean()),
     requiresAssistantAfterToolResult: Type.Optional(Type.Boolean()),
     requiresThinkingAsText: Type.Optional(Type.Boolean()),
-    requiresReasoningContentOnAssistantMessages: Type.Optional(Type.Boolean()),
     thinkingFormat: Type.Optional(Type.Union([
         Type.Literal("openai"),
         Type.Literal("openrouter"),
-        Type.Literal("deepseek"),
         Type.Literal("zai"),
         Type.Literal("qwen"),
         Type.Literal("qwen-chat-template"),
     ])),
-    cacheControlFormat: Type.Optional(Type.Literal("anthropic")),
     openRouterRouting: Type.Optional(OpenRouterRoutingSchema),
     vercelGatewayRouting: Type.Optional(VercelGatewayRoutingSchema),
     supportsStrictMode: Type.Optional(Type.Boolean()),
-    supportsLongCacheRetention: Type.Optional(Type.Boolean()),
 });
-const OpenAIResponsesCompatSchema = Type.Object({
-    sendSessionIdHeader: Type.Optional(Type.Boolean()),
-    supportsLongCacheRetention: Type.Optional(Type.Boolean()),
-});
-const AnthropicMessagesCompatSchema = Type.Object({
-    supportsEagerToolInputStreaming: Type.Optional(Type.Boolean()),
-    supportsLongCacheRetention: Type.Optional(Type.Boolean()),
-});
-const ProviderCompatSchema = Type.Union([
-    OpenAICompletionsCompatSchema,
-    OpenAIResponsesCompatSchema,
-    AnthropicMessagesCompatSchema,
-]);
+const OpenAIResponsesCompatSchema = Type.Object({});
+const OpenAICompatSchema = Type.Union([OpenAICompletionsCompatSchema, OpenAIResponsesCompatSchema]);
 // Schema for custom model definition
 // Most fields are optional with sensible defaults for local models (Ollama, LM Studio, etc.)
 const ModelDefinitionSchema = Type.Object({
@@ -104,7 +60,6 @@ const ModelDefinitionSchema = Type.Object({
     api: Type.Optional(Type.String({ minLength: 1 })),
     baseUrl: Type.Optional(Type.String({ minLength: 1 })),
     reasoning: Type.Optional(Type.Boolean()),
-    thinkingLevelMap: Type.Optional(ThinkingLevelMapSchema),
     input: Type.Optional(Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")]))),
     cost: Type.Optional(Type.Object({
         input: Type.Number(),
@@ -115,13 +70,12 @@ const ModelDefinitionSchema = Type.Object({
     contextWindow: Type.Optional(Type.Number()),
     maxTokens: Type.Optional(Type.Number()),
     headers: Type.Optional(Type.Record(Type.String(), Type.String())),
-    compat: Type.Optional(ProviderCompatSchema),
+    compat: Type.Optional(OpenAICompatSchema),
 });
 // Schema for per-model overrides (all fields optional, merged with built-in model)
 const ModelOverrideSchema = Type.Object({
     name: Type.Optional(Type.String({ minLength: 1 })),
     reasoning: Type.Optional(Type.Boolean()),
-    thinkingLevelMap: Type.Optional(ThinkingLevelMapSchema),
     input: Type.Optional(Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")]))),
     cost: Type.Optional(Type.Object({
         input: Type.Optional(Type.Number()),
@@ -132,15 +86,14 @@ const ModelOverrideSchema = Type.Object({
     contextWindow: Type.Optional(Type.Number()),
     maxTokens: Type.Optional(Type.Number()),
     headers: Type.Optional(Type.Record(Type.String(), Type.String())),
-    compat: Type.Optional(ProviderCompatSchema),
+    compat: Type.Optional(OpenAICompatSchema),
 });
 const ProviderConfigSchema = Type.Object({
-    name: Type.Optional(Type.String({ minLength: 1 })),
     baseUrl: Type.Optional(Type.String({ minLength: 1 })),
     apiKey: Type.Optional(Type.String({ minLength: 1 })),
     api: Type.Optional(Type.String({ minLength: 1 })),
     headers: Type.Optional(Type.Record(Type.String(), Type.String())),
-    compat: Type.Optional(ProviderCompatSchema),
+    compat: Type.Optional(OpenAICompatSchema),
     authHeader: Type.Optional(Type.Boolean()),
     models: Type.Optional(Type.Array(ModelDefinitionSchema)),
     modelOverrides: Type.Optional(Type.Record(Type.String(), ModelOverrideSchema)),
@@ -148,25 +101,7 @@ const ProviderConfigSchema = Type.Object({
 const ModelsConfigSchema = Type.Object({
     providers: Type.Record(Type.String(), ProviderConfigSchema),
 });
-const validateModelsConfig = Compile(ModelsConfigSchema);
-function formatValidationPath(error) {
-    if (error.keyword === "required") {
-        const requiredProperties = error.params.requiredProperties;
-        const requiredProperty = requiredProperties?.[0];
-        if (requiredProperty) {
-            const basePath = error.instancePath.replace(/^\//, "").replace(/\//g, ".");
-            return basePath ? `${basePath}.${requiredProperty}` : requiredProperty;
-        }
-    }
-    const path = error.instancePath.replace(/^\//, "").replace(/\//g, ".");
-    return path || "root";
-}
-/** Strip `//` line comments and trailing commas from JSON, leaving string literals untouched. */
-function stripJsonComments(input) {
-    return input
-        .replace(/"(?:\\.|[^"\\])*"|\/\/[^\n]*/g, (m) => (m[0] === '"' ? m : ""))
-        .replace(/"(?:\\.|[^"\\])*"|,(\s*[}\]])/g, (m, tail) => tail ?? (m[0] === '"' ? m : ""));
-}
+ajv.addSchema(ModelsConfigSchema, "ModelsConfig");
 function emptyCustomModelsResult(error) {
     return { models: [], overrides: new Map(), modelOverrides: new Map(), error };
 }
@@ -204,9 +139,6 @@ function applyModelOverride(model, override) {
         result.name = override.name;
     if (override.reasoning !== undefined)
         result.reasoning = override.reasoning;
-    if (override.thinkingLevelMap !== undefined) {
-        result.thinkingLevelMap = { ...model.thinkingLevelMap, ...override.thinkingLevelMap };
-    }
     if (override.input !== undefined)
         result.input = override.input;
     if (override.contextWindow !== undefined)
@@ -334,15 +266,14 @@ export class ModelRegistry {
         }
         try {
             const content = readFileSync(modelsJsonPath, "utf-8");
-            const parsed = JSON.parse(stripJsonComments(content));
-            if (!validateModelsConfig.Check(parsed)) {
-                const errors = validateModelsConfig
-                    .Errors(parsed)
-                    .map((error) => `  - ${formatValidationPath(error)}: ${error.message}`)
-                    .join("\n") || "Unknown schema error";
+            const config = JSON.parse(content);
+            // Validate schema
+            const validate = ajv.getSchema("ModelsConfig");
+            if (!validate(config)) {
+                const errors = validate.errors?.map((e) => `  - ${e.instancePath || "root"}: ${e.message}`).join("\n") ||
+                    "Unknown schema error";
                 return emptyCustomModelsResult(`Invalid models.json schema:\n${errors}\n\nFile: ${modelsJsonPath}`);
             }
-            const config = parsed;
             // Additional validation
             this.validateConfig(config);
             const overrides = new Map();
@@ -372,20 +303,18 @@ export class ModelRegistry {
         }
     }
     validateConfig(config) {
-        const builtInProviders = new Set(getProviders());
         for (const [providerName, providerConfig] of Object.entries(config.providers)) {
-            const isBuiltIn = builtInProviders.has(providerName);
             const hasProviderApi = !!providerConfig.api;
             const models = providerConfig.models ?? [];
             const hasModelOverrides = providerConfig.modelOverrides && Object.keys(providerConfig.modelOverrides).length > 0;
             if (models.length === 0) {
-                // Override-only config: needs baseUrl, headers, compat, modelOverrides, or some combination.
-                if (!providerConfig.baseUrl && !providerConfig.headers && !providerConfig.compat && !hasModelOverrides) {
-                    throw new Error(`Provider ${providerName}: must specify "baseUrl", "headers", "compat", "modelOverrides", or "models".`);
+                // Override-only config: needs baseUrl, compat, modelOverrides, or some combination.
+                if (!providerConfig.baseUrl && !providerConfig.compat && !hasModelOverrides) {
+                    throw new Error(`Provider ${providerName}: must specify "baseUrl", "compat", "modelOverrides", or "models".`);
                 }
             }
-            else if (!isBuiltIn) {
-                // Non-built-in providers with custom models require endpoint + auth.
+            else {
+                // Custom models are merged into provider models and require endpoint + auth.
                 if (!providerConfig.baseUrl) {
                     throw new Error(`Provider ${providerName}: "baseUrl" is required when defining custom models.`);
                 }
@@ -393,14 +322,11 @@ export class ModelRegistry {
                     throw new Error(`Provider ${providerName}: "apiKey" is required when defining custom models.`);
                 }
             }
-            // Built-in providers with custom models: baseUrl/apiKey/api are optional,
-            // inherited from built-in models. Auth comes from env vars / auth storage.
             for (const modelDef of models) {
                 const hasModelApi = !!modelDef.api;
-                if (!hasProviderApi && !hasModelApi && !isBuiltIn) {
+                if (!hasProviderApi && !hasModelApi) {
                     throw new Error(`Provider ${providerName}, model ${modelDef.id}: no "api" specified. Set at provider or model level.`);
                 }
-                // For built-in providers, api is optional — inherited from built-in models.
                 if (!modelDef.id)
                     throw new Error(`Provider ${providerName}: model missing "id"`);
                 // Validate contextWindow/maxTokens only if provided (they have defaults)
@@ -413,44 +339,26 @@ export class ModelRegistry {
     }
     parseModels(config) {
         const models = [];
-        const builtInProviders = new Set(getProviders());
-        // Cache built-in defaults (api, baseUrl) per provider, extracted from first model.
-        const builtInDefaultsCache = new Map();
-        const getBuiltInDefaults = (providerName) => {
-            if (!builtInProviders.has(providerName))
-                return undefined;
-            if (builtInDefaultsCache.has(providerName))
-                return builtInDefaultsCache.get(providerName);
-            const builtIn = getModels(providerName);
-            if (builtIn.length === 0)
-                return undefined;
-            const defaults = { api: builtIn[0].api, baseUrl: builtIn[0].baseUrl };
-            builtInDefaultsCache.set(providerName, defaults);
-            return defaults;
-        };
         for (const [providerName, providerConfig] of Object.entries(config.providers)) {
             const modelDefs = providerConfig.models ?? [];
             if (modelDefs.length === 0)
                 continue; // Override-only, no custom models
-            const builtInDefaults = getBuiltInDefaults(providerName);
             for (const modelDef of modelDefs) {
-                const api = modelDef.api ?? providerConfig.api ?? builtInDefaults?.api;
+                const api = modelDef.api || providerConfig.api;
                 if (!api)
-                    continue;
-                const baseUrl = modelDef.baseUrl ?? providerConfig.baseUrl ?? builtInDefaults?.baseUrl;
-                if (!baseUrl)
                     continue;
                 const compat = mergeCompat(providerConfig.compat, modelDef.compat);
                 this.storeModelHeaders(providerName, modelDef.id, modelDef.headers);
+                // Provider baseUrl is required when custom models are defined.
+                // Individual models can override it with modelDef.baseUrl.
                 const defaultCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
                 models.push({
                     id: modelDef.id,
                     name: modelDef.name ?? modelDef.id,
                     api: api,
                     provider: providerName,
-                    baseUrl,
+                    baseUrl: modelDef.baseUrl ?? providerConfig.baseUrl,
                     reasoning: modelDef.reasoning ?? false,
-                    thinkingLevelMap: modelDef.thinkingLevelMap,
                     input: (modelDef.input ?? ["text"]),
                     cost: modelDef.cost ?? defaultCost,
                     contextWindow: modelDef.contextWindow ?? 128000,
@@ -546,39 +454,6 @@ export class ModelRegistry {
         }
     }
     /**
-     * Return auth status for a provider, including request auth configured in models.json.
-     * This intentionally does not execute command-backed config values.
-     */
-    getProviderAuthStatus(provider) {
-        const authStatus = this.authStorage.getAuthStatus(provider);
-        if (authStatus.source) {
-            return authStatus;
-        }
-        const providerApiKey = this.providerRequestConfigs.get(provider)?.apiKey;
-        if (!providerApiKey) {
-            return authStatus;
-        }
-        if (providerApiKey.startsWith("!")) {
-            return { configured: true, source: "models_json_command" };
-        }
-        if (process.env[providerApiKey]) {
-            return { configured: true, source: "environment", label: providerApiKey };
-        }
-        return { configured: true, source: "models_json_key" };
-    }
-    /**
-     * Get display name for a provider.
-     */
-    getProviderDisplayName(provider) {
-        const registeredProvider = this.registeredProviders.get(provider);
-        const oauthProvider = this.authStorage.getOAuthProviders().find((p) => p.id === provider);
-        return (registeredProvider?.name ??
-            registeredProvider?.oauth?.name ??
-            oauthProvider?.name ??
-            BUILT_IN_PROVIDER_DISPLAY_NAMES[provider] ??
-            provider);
-    }
-    /**
      * Get API key for a provider.
      */
     async getApiKeyForProvider(provider) {
@@ -606,7 +481,7 @@ export class ModelRegistry {
     registerProvider(providerName, config) {
         this.validateProviderConfig(providerName, config);
         this.applyProviderConfig(providerName, config);
-        this.upsertRegisteredProvider(providerName, config);
+        this.registeredProviders.set(providerName, config);
     }
     /**
      * Unregister a previously registered provider.
@@ -622,24 +497,6 @@ export class ModelRegistry {
             return;
         this.registeredProviders.delete(providerName);
         this.refresh();
-    }
-    /**
-     * Upsert a provider config into registeredProviders.
-     * If the provider is already registered, defined values in the incoming config
-     * override existing ones; undefined values are preserved from the stored config.
-     * If the provider is not registered, the incoming config is stored as-is.
-     */
-    upsertRegisteredProvider(providerName, config) {
-        const existing = this.registeredProviders.get(providerName);
-        if (!existing) {
-            this.registeredProviders.set(providerName, config);
-            return;
-        }
-        for (const k of Object.keys(config)) {
-            if (config[k] !== undefined) {
-                existing[k] = config[k];
-            }
-        }
     }
     validateProviderConfig(providerName, config) {
         if (config.streamSimple && !config.api) {
@@ -692,9 +549,8 @@ export class ModelRegistry {
                     name: modelDef.name,
                     api: api,
                     provider: providerName,
-                    baseUrl: modelDef.baseUrl ?? config.baseUrl,
+                    baseUrl: config.baseUrl,
                     reasoning: modelDef.reasoning,
-                    thinkingLevelMap: modelDef.thinkingLevelMap,
                     input: modelDef.input,
                     cost: modelDef.cost,
                     contextWindow: modelDef.contextWindow,

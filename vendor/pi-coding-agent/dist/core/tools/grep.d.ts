@@ -1,15 +1,15 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { type Static, Type } from "typebox";
+import { type Static } from "@sinclair/typebox";
 import type { ToolDefinition } from "../extensions/types.js";
 import { type TruncationResult } from "./truncate.js";
-declare const grepSchema: Type.TObject<{
-    pattern: Type.TString;
-    path: Type.TOptional<Type.TString>;
-    glob: Type.TOptional<Type.TString>;
-    ignoreCase: Type.TOptional<Type.TBoolean>;
-    literal: Type.TOptional<Type.TBoolean>;
-    context: Type.TOptional<Type.TNumber>;
-    limit: Type.TOptional<Type.TNumber>;
+declare const grepSchema: import("@sinclair/typebox").TObject<{
+    pattern: import("@sinclair/typebox").TString;
+    path: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TString>;
+    glob: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TString>;
+    ignoreCase: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TBoolean>;
+    literal: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TBoolean>;
+    context: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TNumber>;
+    limit: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TNumber>;
 }>;
 export type GrepToolInput = Static<typeof grepSchema>;
 export interface GrepToolDetails {
@@ -33,5 +33,24 @@ export interface GrepToolOptions {
 }
 export declare function createGrepToolDefinition(cwd: string, options?: GrepToolOptions): ToolDefinition<typeof grepSchema, GrepToolDetails | undefined>;
 export declare function createGrepTool(cwd: string, options?: GrepToolOptions): AgentTool<typeof grepSchema>;
+/** Default grep tool using process.cwd() for backwards compatibility. */
+export declare const grepToolDefinition: ToolDefinition<import("@sinclair/typebox").TObject<{
+    pattern: import("@sinclair/typebox").TString;
+    path: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TString>;
+    glob: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TString>;
+    ignoreCase: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TBoolean>;
+    literal: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TBoolean>;
+    context: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TNumber>;
+    limit: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TNumber>;
+}>, GrepToolDetails | undefined, any>;
+export declare const grepTool: AgentTool<import("@sinclair/typebox").TObject<{
+    pattern: import("@sinclair/typebox").TString;
+    path: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TString>;
+    glob: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TString>;
+    ignoreCase: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TBoolean>;
+    literal: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TBoolean>;
+    context: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TNumber>;
+    limit: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TNumber>;
+}>, any>;
 export {};
 //# sourceMappingURL=grep.d.ts.map

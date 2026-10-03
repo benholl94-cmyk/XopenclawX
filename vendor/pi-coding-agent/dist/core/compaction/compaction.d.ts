@@ -4,7 +4,7 @@
  * Pure functions for compaction logic. The session manager handles I/O,
  * and after compaction the session is reloaded.
  */
-import type { AgentMessage, ThinkingLevel } from "@mariozechner/pi-agent-core";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { Model, Usage } from "@mariozechner/pi-ai";
 import { type SessionEntry } from "../session-manager.js";
 import { type FileOperations } from "./utils.js";
@@ -91,7 +91,7 @@ export declare function findCutPoint(entries: SessionEntry[], startIndex: number
  * Generate a summary of the conversation using the LLM.
  * If previousSummary is provided, uses the update prompt to merge.
  */
-export declare function generateSummary(currentMessages: AgentMessage[], model: Model<any>, reserveTokens: number, apiKey: string, headers?: Record<string, string>, signal?: AbortSignal, customInstructions?: string, previousSummary?: string, thinkingLevel?: ThinkingLevel): Promise<string>;
+export declare function generateSummary(currentMessages: AgentMessage[], model: Model<any>, reserveTokens: number, apiKey: string, headers?: Record<string, string>, signal?: AbortSignal, customInstructions?: string, previousSummary?: string): Promise<string>;
 export interface CompactionPreparation {
     /** UUID of first entry to keep */
     firstKeptEntryId: string;
@@ -117,5 +117,5 @@ export declare function prepareCompaction(pathEntries: SessionEntry[], settings:
  * @param preparation - Pre-calculated preparation from prepareCompaction()
  * @param customInstructions - Optional custom focus for the summary
  */
-export declare function compact(preparation: CompactionPreparation, model: Model<any>, apiKey: string, headers?: Record<string, string>, customInstructions?: string, signal?: AbortSignal, thinkingLevel?: ThinkingLevel): Promise<CompactionResult>;
+export declare function compact(preparation: CompactionPreparation, model: Model<any>, apiKey: string, headers?: Record<string, string>, customInstructions?: string, signal?: AbortSignal): Promise<CompactionResult>;
 //# sourceMappingURL=compaction.d.ts.map

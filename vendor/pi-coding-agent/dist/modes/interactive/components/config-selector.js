@@ -268,9 +268,7 @@ class ResourceList {
         }
         // Scroll indicator
         if (startIndex > 0 || endIndex < this.filteredItems.length) {
-            const itemCount = this.filteredItems.filter((e) => e.type === "item").length;
-            const currentItemIndex = this.filteredItems.slice(0, this.selectedIndex).filter((e) => e.type === "item").length + 1;
-            lines.push(theme.fg("dim", `  (${currentItemIndex}/${itemCount})`));
+            lines.push(theme.fg("dim", `  (${this.selectedIndex + 1}/${this.filteredItems.length})`));
         }
         return lines;
     }

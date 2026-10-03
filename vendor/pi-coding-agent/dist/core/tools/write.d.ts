@@ -1,9 +1,9 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { type Static, Type } from "typebox";
+import { type Static } from "@sinclair/typebox";
 import type { ToolDefinition } from "../extensions/types.js";
-declare const writeSchema: Type.TObject<{
-    path: Type.TString;
-    content: Type.TString;
+declare const writeSchema: import("@sinclair/typebox").TObject<{
+    path: import("@sinclair/typebox").TString;
+    content: import("@sinclair/typebox").TString;
 }>;
 export type WriteToolInput = Static<typeof writeSchema>;
 /**
@@ -22,5 +22,14 @@ export interface WriteToolOptions {
 }
 export declare function createWriteToolDefinition(cwd: string, options?: WriteToolOptions): ToolDefinition<typeof writeSchema, undefined>;
 export declare function createWriteTool(cwd: string, options?: WriteToolOptions): AgentTool<typeof writeSchema>;
+/** Default write tool using process.cwd() for backwards compatibility. */
+export declare const writeToolDefinition: ToolDefinition<import("@sinclair/typebox").TObject<{
+    path: import("@sinclair/typebox").TString;
+    content: import("@sinclair/typebox").TString;
+}>, undefined, any>;
+export declare const writeTool: AgentTool<import("@sinclair/typebox").TObject<{
+    path: import("@sinclair/typebox").TString;
+    content: import("@sinclair/typebox").TString;
+}>, any>;
 export {};
 //# sourceMappingURL=write.d.ts.map

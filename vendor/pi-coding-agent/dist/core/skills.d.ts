@@ -43,18 +43,18 @@ export declare function loadSkillsFromDir(options: LoadSkillsFromDirOptions): Lo
  */
 export declare function formatSkillsForPrompt(skills: Skill[]): string;
 export interface LoadSkillsOptions {
-    /** Working directory for project-local skills. */
-    cwd: string;
-    /** Agent config directory for global skills. */
-    agentDir: string;
+    /** Working directory for project-local skills. Default: process.cwd() */
+    cwd?: string;
+    /** Agent config directory for global skills. Default: ~/.pi/agent */
+    agentDir?: string;
     /** Explicit skill paths (files or directories) */
-    skillPaths: string[];
-    /** Include default skills directories. */
-    includeDefaults: boolean;
+    skillPaths?: string[];
+    /** Include default skills directories. Default: true */
+    includeDefaults?: boolean;
 }
 /**
  * Load skills from all configured locations.
  * Returns skills and any validation diagnostics.
  */
-export declare function loadSkills(options: LoadSkillsOptions): LoadSkillsResult;
+export declare function loadSkills(options?: LoadSkillsOptions): LoadSkillsResult;
 //# sourceMappingURL=skills.d.ts.map

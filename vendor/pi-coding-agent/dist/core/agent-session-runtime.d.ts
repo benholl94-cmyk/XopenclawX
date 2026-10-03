@@ -1,6 +1,6 @@
 import type { AgentSession } from "./agent-session.js";
 import type { AgentSessionRuntimeDiagnostic, AgentSessionServices } from "./agent-session-services.js";
-import type { ReplacedSessionContext, SessionStartEvent } from "./extensions/index.js";
+import type { SessionStartEvent } from "./extensions/index.js";
 import type { CreateAgentSessionResult } from "./sdk.js";
 import { SessionManager } from "./session-manager.js";
 /**
@@ -27,13 +27,6 @@ export type CreateAgentSessionRuntimeFactory = (options: {
     sessionStartEvent?: SessionStartEvent;
 }) => Promise<CreateAgentSessionRuntimeResult>;
 /**
- * Thrown when /import references a JSONL file path that does not exist.
- */
-export declare class SessionImportFileNotFoundError extends Error {
-    readonly filePath: string;
-    constructor(filePath: string);
-}
-/**
  * Owns the current AgentSession plus its cwd-bound services.
  *
  * Session replacement methods tear down the current runtime first, then create
@@ -46,56 +39,29 @@ export declare class AgentSessionRuntime {
     private readonly createRuntime;
     private _diagnostics;
     private _modelFallbackMessage?;
-    private rebindSession?;
-    private beforeSessionInvalidate?;
     constructor(_session: AgentSession, _services: AgentSessionServices, createRuntime: CreateAgentSessionRuntimeFactory, _diagnostics?: AgentSessionRuntimeDiagnostic[], _modelFallbackMessage?: string | undefined);
     get services(): AgentSessionServices;
     get session(): AgentSession;
     get cwd(): string;
     get diagnostics(): readonly AgentSessionRuntimeDiagnostic[];
     get modelFallbackMessage(): string | undefined;
-    setRebindSession(rebindSession?: (session: AgentSession) => Promise<void>): void;
-    /**
-     * Set a synchronous callback that runs after `session_shutdown` handlers finish
-     * but before the current session is invalidated.
-     *
-     * This is for host-owned UI teardown that must not yield to the event loop,
-     * such as detaching extension-provided TUI components before the old extension
-     * context becomes stale.
-     */
-    setBeforeSessionInvalidate(beforeSessionInvalidate?: () => void): void;
     private emitBeforeSwitch;
     private emitBeforeFork;
     private teardownCurrent;
     private apply;
-    private finishSessionReplacement;
-    switchSession(sessionPath: string, options?: {
-        cwdOverride?: string;
-        withSession?: (ctx: ReplacedSessionContext) => Promise<void>;
-    }): Promise<{
+    switchSession(sessionPath: string, cwdOverride?: string): Promise<{
         cancelled: boolean;
     }>;
     newSession(options?: {
         parentSession?: string;
         setup?: (sessionManager: SessionManager) => Promise<void>;
-        withSession?: (ctx: ReplacedSessionContext) => Promise<void>;
     }): Promise<{
         cancelled: boolean;
     }>;
-    fork(entryId: string, options?: {
-        position?: "before" | "at";
-        withSession?: (ctx: ReplacedSessionContext) => Promise<void>;
-    }): Promise<{
+    fork(entryId: string): Promise<{
         cancelled: boolean;
         selectedText?: string;
     }>;
-    /**
-     * Import a session JSONL file and switch runtime state to the imported session.
-     *
-     * @returns `{ cancelled: true }` when cancelled by `session_before_switch`, otherwise `{ cancelled: false }`.
-     * @throws {SessionImportFileNotFoundError} When the input path does not exist.
-     * @throws {MissingSessionCwdError} When the imported session cwd cannot be resolved and no override is provided.
-     */
     importFromJsonl(inputPath: string, cwdOverride?: string): Promise<{
         cancelled: boolean;
     }>;

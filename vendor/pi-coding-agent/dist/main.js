@@ -6,7 +6,7 @@
  */
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
-import { modelsAreEqual } from "@mariozechner/pi-ai";
+import { modelsAreEqual, supportsXhigh } from "@mariozechner/pi-ai";
 import { ProcessTerminal, setKeybindings, TUI } from "@mariozechner/pi-tui";
 import chalk from "chalk";
 import { parseArgs, printHelp } from "./cli/args.js";
@@ -14,10 +14,9 @@ import { processFileArguments } from "./cli/file-processor.js";
 import { buildInitialMessage } from "./cli/initial-message.js";
 import { listModels } from "./cli/list-models.js";
 import { selectSession } from "./cli/session-picker.js";
-import { ENV_SESSION_DIR, expandTildePath, getAgentDir, VERSION } from "./config.js";
+import { getAgentDir, getModelsPath, VERSION } from "./config.js";
 import { createAgentSessionRuntime } from "./core/agent-session-runtime.js";
 import { createAgentSessionFromServices, createAgentSessionServices, } from "./core/agent-session-services.js";
-import { formatNoModelsAvailableMessage } from "./core/auth-guidance.js";
 import { AuthStorage } from "./core/auth-storage.js";
 import { exportFromFile } from "./core/export-html/index.js";
 import { KeybindingsManager } from "./core/keybindings.js";
@@ -27,6 +26,7 @@ import { formatMissingSessionCwdPrompt, getMissingSessionCwdIssue, MissingSessio
 import { SessionManager } from "./core/session-manager.js";
 import { SettingsManager } from "./core/settings-manager.js";
 import { printTimings, resetTimings, time } from "./core/timings.js";
+import { allTools } from "./core/tools/index.js";
 import { runMigrations, showDeprecationWarnings } from "./migrations.js";
 import { InteractiveMode, runPrintMode, runRpcMode } from "./modes/index.js";
 import { ExtensionSelectorComponent } from "./modes/interactive/components/extension-selector.js";
@@ -283,13 +283,17 @@ function buildSessionOptions(parsed, scopedModels, hasExistingSession, modelRegi
     // (handled by caller before createAgentSession)
     // Tools
     if (parsed.noTools) {
-        options.noTools = "all";
+        // --no-tools: start with no built-in tools
+        // --tools can still add specific ones back
+        if (parsed.tools && parsed.tools.length > 0) {
+            options.tools = parsed.tools.map((name) => allTools[name]);
+        }
+        else {
+            options.tools = [];
+        }
     }
-    else if (parsed.noBuiltinTools) {
-        options.noTools = "builtin";
-    }
-    if (parsed.tools) {
-        options.tools = [...parsed.tools];
+    else if (parsed.tools) {
+        options.tools = parsed.tools.map((name) => allTools[name]);
     }
     return { options, cliThinkingFromModel, diagnostics };
 }
@@ -317,7 +321,7 @@ async function promptForMissingSessionCwd(issue, settingsManager) {
         ui.start();
     });
 }
-export async function main(args, options) {
+export async function main(args) {
     resetTimings();
     const offlineMode = args.includes("--offline") || isTruthyEnvFlag(process.env.PI_OFFLINE);
     if (offlineMode) {
@@ -381,10 +385,7 @@ export async function main(args, options) {
     // settings, resources, provider registrations, and models must be resolved only after
     // the target session cwd is known. The startup-cwd settings manager is used only for
     // sessionDir lookup during session selection.
-    const envSessionDir = process.env[ENV_SESSION_DIR];
-    const sessionDir = parsed.sessionDir ??
-        (envSessionDir ? expandTildePath(envSessionDir) : undefined) ??
-        startupSettingsManager.getSessionDir();
+    const sessionDir = parsed.sessionDir ?? startupSettingsManager.getSessionDir();
     let sessionManager = await createSessionManager(parsed, cwd, sessionDir, startupSettingsManager);
     const missingSessionCwdIssue = getMissingSessionCwdIssue(sessionManager, cwd);
     if (missingSessionCwdIssue) {
@@ -421,10 +422,8 @@ export async function main(args, options) {
                 noSkills: parsed.noSkills,
                 noPromptTemplates: parsed.noPromptTemplates,
                 noThemes: parsed.noThemes,
-                noContextFiles: parsed.noContextFiles,
                 systemPrompt: parsed.systemPrompt,
                 appendSystemPrompt: parsed.appendSystemPrompt,
-                extensionFactories: options?.extensionFactories,
             },
         });
         const { settingsManager, modelRegistry, resourceLoader } = services;
@@ -459,12 +458,20 @@ export async function main(args, options) {
             thinkingLevel: sessionOptions.thinkingLevel,
             scopedModels: sessionOptions.scopedModels,
             tools: sessionOptions.tools,
-            noTools: sessionOptions.noTools,
             customTools: sessionOptions.customTools,
         });
         const cliThinkingOverride = parsed.thinking !== undefined || cliThinkingFromModel;
         if (created.session.model && cliThinkingOverride) {
-            created.session.setThinkingLevel(created.session.thinkingLevel);
+            let effectiveThinking = created.session.thinkingLevel;
+            if (!created.session.model.reasoning) {
+                effectiveThinking = "off";
+            }
+            else if (effectiveThinking === "xhigh" && !supportsXhigh(created.session.model)) {
+                effectiveThinking = "high";
+            }
+            if (effectiveThinking !== created.session.thinkingLevel) {
+                created.session.setThinkingLevel(effectiveThinking);
+            }
         }
         return {
             ...created,
@@ -517,7 +524,10 @@ export async function main(args, options) {
     }
     time("createAgentSession");
     if (appMode !== "interactive" && !session.model) {
-        console.error(chalk.red(formatNoModelsAvailableMessage()));
+        console.error(chalk.red("No models available."));
+        console.error(chalk.yellow("\nSet an API key environment variable:"));
+        console.error("  ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, etc.");
+        console.error(chalk.yellow(`\nOr create ${getModelsPath()}`));
         process.exit(1);
     }
     const startupBenchmark = isTruthyEnvFlag(process.env.PI_STARTUP_BENCHMARK);

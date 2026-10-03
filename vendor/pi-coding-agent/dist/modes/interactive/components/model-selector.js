@@ -55,7 +55,7 @@ export class ModelSelectorComponent extends Container {
             this.addChild(this.scopeHintText);
         }
         else {
-            const hintText = "Only showing models from configured providers. Use /login to add providers.";
+            const hintText = "Only showing models with configured API keys (see README for details)";
             this.addChild(new Text(theme.fg("warning", hintText), 0, 0));
         }
         this.addChild(new Spacer(1));
@@ -121,16 +121,14 @@ export class ModelSelectorComponent extends Container {
             const refreshed = this.modelRegistry.find(scoped.model.provider, scoped.model.id);
             return refreshed ? { ...scoped, model: refreshed } : scoped;
         });
-        this.scopedModelItems = this.scopedModels.map((scoped) => ({
+        this.scopedModelItems = this.sortModels(this.scopedModels.map((scoped) => ({
             provider: scoped.model.provider,
             id: scoped.model.id,
             model: scoped.model,
-        }));
+        })));
         this.activeModels = this.scope === "scoped" ? this.scopedModelItems : this.allModels;
         this.filteredModels = this.activeModels;
-        const currentIndex = this.filteredModels.findIndex((item) => modelsAreEqual(this.currentModel, item.model));
-        this.selectedIndex =
-            currentIndex >= 0 ? currentIndex : Math.min(this.selectedIndex, Math.max(0, this.filteredModels.length - 1));
+        this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, this.filteredModels.length - 1));
     }
     sortModels(models) {
         const sorted = [...models];
@@ -159,8 +157,7 @@ export class ModelSelectorComponent extends Container {
             return;
         this.scope = scope;
         this.activeModels = this.scope === "scoped" ? this.scopedModelItems : this.allModels;
-        const currentIndex = this.activeModels.findIndex((item) => modelsAreEqual(this.currentModel, item.model));
-        this.selectedIndex = currentIndex >= 0 ? currentIndex : 0;
+        this.selectedIndex = 0;
         this.filterModels(this.searchInput.getValue());
         if (this.scopeText) {
             this.scopeText.setText(this.getScopeText());

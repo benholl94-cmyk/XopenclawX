@@ -1,9 +1,9 @@
 import { createInterface } from "node:readline";
 import { Text } from "@mariozechner/pi-tui";
+import { Type } from "@sinclair/typebox";
 import { spawn } from "child_process";
 import { readFileSync, statSync } from "fs";
 import path from "path";
-import { Type } from "typebox";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.js";
 import { ensureTool } from "../../utils/tools-manager.js";
 import { resolveToCwd } from "./path-utils.js";
@@ -140,7 +140,7 @@ export function createGrepToolDefinition(cwd, options) {
                             args.push("--fixed-strings");
                         if (glob)
                             args.push("--glob", glob);
-                        args.push("--", pattern, searchPath);
+                        args.push(pattern, searchPath);
                         const child = spawn(rgPath, args, { stdio: ["ignore", "pipe", "pipe"] });
                         const rl = createInterface({ input: child.stdout });
                         let stderr = "";
@@ -207,9 +207,8 @@ export function createGrepToolDefinition(cwd, options) {
                                 matchCount++;
                                 const filePath = event.data?.path?.text;
                                 const lineNumber = event.data?.line_number;
-                                const lineText = event.data?.lines?.text;
                                 if (filePath && typeof lineNumber === "number")
-                                    matches.push({ filePath, lineNumber, lineText });
+                                    matches.push({ filePath, lineNumber });
                                 if (matchCount >= effectiveLimit) {
                                     matchLimitReached = true;
                                     stopChild(true);
@@ -237,21 +236,8 @@ export function createGrepToolDefinition(cwd, options) {
                             }
                             // Format matches after streaming finishes so custom readFile() backends can be async.
                             for (const match of matches) {
-                                if (contextValue === 0 && match.lineText !== undefined) {
-                                    const relativePath = formatPath(match.filePath);
-                                    const sanitized = match.lineText
-                                        .replace(/\r\n/g, "\n")
-                                        .replace(/\r/g, "")
-                                        .replace(/\n$/, "");
-                                    const { text: truncatedText, wasTruncated } = truncateLine(sanitized);
-                                    if (wasTruncated)
-                                        linesTruncated = true;
-                                    outputLines.push(`${relativePath}:${match.lineNumber}: ${truncatedText}`);
-                                }
-                                else {
-                                    const block = await formatBlock(match.filePath, match.lineNumber);
-                                    outputLines.push(...block);
-                                }
+                                const block = await formatBlock(match.filePath, match.lineNumber);
+                                outputLines.push(...block);
                             }
                             const rawOutput = outputLines.join("\n");
                             // Apply byte truncation. There is no line limit here because the match limit already capped rows.
@@ -301,4 +287,7 @@ export function createGrepToolDefinition(cwd, options) {
 export function createGrepTool(cwd, options) {
     return wrapToolDefinition(createGrepToolDefinition(cwd, options));
 }
+/** Default grep tool using process.cwd() for backwards compatibility. */
+export const grepToolDefinition = createGrepToolDefinition(process.cwd());
+export const grepTool = createGrepTool(process.cwd());
 //# sourceMappingURL=grep.js.map

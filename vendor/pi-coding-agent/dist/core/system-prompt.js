@@ -4,15 +4,11 @@
 import { getDocsPath, getExamplesPath, getReadmePath } from "../config.js";
 import { formatSkillsForPrompt } from "./skills.js";
 /** Build the system prompt with tools, guidelines, and context */
-export function buildSystemPrompt(options) {
+export function buildSystemPrompt(options = {}) {
     const { customPrompt, selectedTools, toolSnippets, promptGuidelines, appendSystemPrompt, cwd, contextFiles: providedContextFiles, skills: providedSkills, } = options;
-    const resolvedCwd = cwd;
+    const resolvedCwd = cwd ?? process.cwd();
     const promptCwd = resolvedCwd.replace(/\\/g, "/");
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    const day = String(now.getDate()).padStart(2, "0");
-    const date = `${year}-${month}-${day}`;
+    const date = new Date().toISOString().slice(0, 10);
     const appendSection = appendSystemPrompt ? `\n\n${appendSystemPrompt}` : "";
     const contextFiles = providedContextFiles ?? [];
     const skills = providedSkills ?? [];

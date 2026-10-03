@@ -21,7 +21,6 @@ const TOOLS = {
         name: "fd",
         repo: "sharkdp/fd",
         binaryName: "fd",
-        systemBinaryNames: ["fd", "fdfind"],
         tagPrefix: "v",
         getAssetName: (version, plat, architecture) => {
             if (plat === "darwin") {
@@ -85,11 +84,8 @@ export function getToolPath(tool) {
         return localPath;
     }
     // Check system PATH - if found, just return the command name (it's in PATH)
-    const systemBinaryNames = config.systemBinaryNames ?? [config.binaryName];
-    for (const systemBinaryName of systemBinaryNames) {
-        if (commandExists(systemBinaryName)) {
-            return systemBinaryName;
-        }
+    if (commandExists(config.binaryName)) {
+        return config.binaryName;
     }
     return null;
 }

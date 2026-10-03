@@ -1,5 +1,4 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { homedir } from "os";
 import { dirname, join } from "path";
 import lockfile from "proper-lockfile";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.js";
@@ -31,7 +30,7 @@ function deepMergeSettings(base, overrides) {
 export class FileSettingsStorage {
     globalSettingsPath;
     projectSettingsPath;
-    constructor(cwd, agentDir) {
+    constructor(cwd = process.cwd(), agentDir = getAgentDir()) {
         this.globalSettingsPath = join(agentDir, "settings.json");
         this.projectSettingsPath = join(cwd, CONFIG_DIR_NAME, "settings.json");
     }
@@ -128,7 +127,7 @@ export class SettingsManager {
         this.settings = deepMergeSettings(this.globalSettings, this.projectSettings);
     }
     /** Create a SettingsManager that loads from files */
-    static create(cwd, agentDir = getAgentDir()) {
+    static create(cwd = process.cwd(), agentDir = getAgentDir()) {
         const storage = new FileSettingsStorage(cwd, agentDir);
         return SettingsManager.fromStorage(storage);
     }
@@ -148,9 +147,7 @@ export class SettingsManager {
     /** Create an in-memory SettingsManager (no file I/O) */
     static inMemory(settings = {}) {
         const storage = new InMemorySettingsStorage();
-        const initialSettings = SettingsManager.migrateSettings(structuredClone(settings));
-        storage.withLock("global", () => JSON.stringify(initialSettings, null, 2));
-        return SettingsManager.fromStorage(storage);
+        return new SettingsManager(storage, settings, {});
     }
     static loadFromStorage(storage, scope) {
         let content;
@@ -199,24 +196,6 @@ export class SettingsManager {
             else {
                 delete settings.skills;
             }
-        }
-        // Migrate retry.maxDelayMs -> retry.provider.maxRetryDelayMs
-        if ("retry" in settings &&
-            typeof settings.retry === "object" &&
-            settings.retry !== null &&
-            !Array.isArray(settings.retry)) {
-            const retrySettings = settings.retry;
-            const providerSettings = typeof retrySettings.provider === "object" && retrySettings.provider !== null
-                ? retrySettings.provider
-                : undefined;
-            if (typeof retrySettings.maxDelayMs === "number" &&
-                (providerSettings?.maxRetryDelayMs === undefined || providerSettings?.maxRetryDelayMs === null)) {
-                retrySettings.provider = {
-                    ...(providerSettings ?? {}),
-                    maxRetryDelayMs: retrySettings.maxDelayMs,
-                };
-            }
-            delete retrySettings.maxDelayMs;
         }
         return settings;
     }
@@ -373,17 +352,7 @@ export class SettingsManager {
         this.save();
     }
     getSessionDir() {
-        const sessionDir = this.settings.sessionDir;
-        if (!sessionDir) {
-            return sessionDir;
-        }
-        if (sessionDir === "~") {
-            return homedir();
-        }
-        if (sessionDir.startsWith("~/")) {
-            return join(homedir(), sessionDir.slice(2));
-        }
-        return sessionDir;
+        return this.settings.sessionDir;
     }
     getDefaultProvider() {
         return this.settings.defaultProvider;
@@ -441,7 +410,7 @@ export class SettingsManager {
         this.save();
     }
     getTransport() {
-        return this.settings.transport ?? "auto";
+        return this.settings.transport ?? "sse";
     }
     setTransport(transport) {
         this.globalSettings.transport = transport;
@@ -497,13 +466,7 @@ export class SettingsManager {
             enabled: this.getRetryEnabled(),
             maxRetries: this.settings.retry?.maxRetries ?? 3,
             baseDelayMs: this.settings.retry?.baseDelayMs ?? 2000,
-        };
-    }
-    getProviderRetrySettings() {
-        return {
-            timeoutMs: this.settings.retry?.provider?.timeoutMs,
-            maxRetries: this.settings.retry?.provider?.maxRetries,
-            maxRetryDelayMs: this.settings.retry?.provider?.maxRetryDelayMs ?? 60000,
+            maxDelayMs: this.settings.retry?.maxDelayMs ?? 60000,
         };
     }
     getHideThinkingBlock() {
@@ -552,14 +515,6 @@ export class SettingsManager {
     setCollapseChangelog(collapse) {
         this.globalSettings.collapseChangelog = collapse;
         this.markModified("collapseChangelog");
-        this.save();
-    }
-    getEnableInstallTelemetry() {
-        return this.settings.enableInstallTelemetry ?? true;
-    }
-    setEnableInstallTelemetry(enabled) {
-        this.globalSettings.enableInstallTelemetry = enabled;
-        this.markModified("enableInstallTelemetry");
         this.save();
     }
     getPackages() {
@@ -654,21 +609,6 @@ export class SettingsManager {
         this.markModified("terminal", "showImages");
         this.save();
     }
-    getImageWidthCells() {
-        const width = this.settings.terminal?.imageWidthCells;
-        if (typeof width !== "number" || !Number.isFinite(width)) {
-            return 60;
-        }
-        return Math.max(1, Math.floor(width));
-    }
-    setImageWidthCells(width) {
-        if (!this.globalSettings.terminal) {
-            this.globalSettings.terminal = {};
-        }
-        this.globalSettings.terminal.imageWidthCells = Math.max(1, Math.floor(width));
-        this.markModified("terminal", "imageWidthCells");
-        this.save();
-    }
     getClearOnShrink() {
         // Settings takes precedence, then env var, then default false
         if (this.settings.terminal?.clearOnShrink !== undefined) {
@@ -682,17 +622,6 @@ export class SettingsManager {
         }
         this.globalSettings.terminal.clearOnShrink = enabled;
         this.markModified("terminal", "clearOnShrink");
-        this.save();
-    }
-    getShowTerminalProgress() {
-        return this.settings.terminal?.showTerminalProgress ?? false;
-    }
-    setShowTerminalProgress(enabled) {
-        if (!this.globalSettings.terminal) {
-            this.globalSettings.terminal = {};
-        }
-        this.globalSettings.terminal.showTerminalProgress = enabled;
-        this.markModified("terminal", "showTerminalProgress");
         this.save();
     }
     getImageAutoResize() {
@@ -769,14 +698,6 @@ export class SettingsManager {
     }
     getCodeBlockIndent() {
         return this.settings.markdown?.codeBlockIndent ?? "  ";
-    }
-    getWarnings() {
-        return { ...(this.settings.warnings ?? {}) };
-    }
-    setWarnings(warnings) {
-        this.globalSettings.warnings = { ...warnings };
-        this.markModified("warnings");
-        this.save();
     }
 }
 //# sourceMappingURL=settings-manager.js.map

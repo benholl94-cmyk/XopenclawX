@@ -2,13 +2,21 @@ import type { Model } from "@mariozechner/pi-ai";
 import { Container, type Focusable, Input } from "@mariozechner/pi-tui";
 export interface ModelsConfig {
     allModels: Model<any>[];
-    enabledModelIds: string[] | null;
+    enabledModelIds: Set<string>;
+    /** true if enabledModels setting is defined (empty = all enabled) */
+    hasEnabledModelsFilter: boolean;
 }
 export interface ModelsCallbacks {
-    /** Called whenever the enabled model set or order changes (session-only, no persist) */
-    onChange: (enabledModelIds: string[] | null) => void | Promise<void>;
+    /** Called when a model is toggled (session-only, no persist) */
+    onModelToggle: (modelId: string, enabled: boolean) => void;
     /** Called when user wants to persist current selection to settings */
-    onPersist: (enabledModelIds: string[] | null) => void | Promise<void>;
+    onPersist: (enabledModelIds: string[]) => void;
+    /** Called when user enables all models. Returns list of all model IDs. */
+    onEnableAll: (allModelIds: string[]) => void;
+    /** Called when user clears all models */
+    onClearAll: () => void;
+    /** Called when user toggles all models for a provider. Returns affected model IDs. */
+    onToggleProvider: (provider: string, modelIds: string[], enabled: boolean) => void;
     onCancel: () => void;
 }
 /**
@@ -34,7 +42,6 @@ export declare class ScopedModelsSelectorComponent extends Container implements 
     private buildItems;
     private getFooterText;
     private refresh;
-    private notifyChange;
     private updateList;
     handleInput(data: string): void;
     getSearchInput(): Input;

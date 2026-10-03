@@ -28,19 +28,6 @@ export interface AppKeybindings {
     "app.session.rename": true;
     "app.session.delete": true;
     "app.session.deleteNoninvasive": true;
-    "app.models.save": true;
-    "app.models.enableAll": true;
-    "app.models.clearAll": true;
-    "app.models.toggleProvider": true;
-    "app.models.reorderUp": true;
-    "app.models.reorderDown": true;
-    "app.tree.filter.default": true;
-    "app.tree.filter.noTools": true;
-    "app.tree.filter.userOnly": true;
-    "app.tree.filter.labeledOnly": true;
-    "app.tree.filter.all": true;
-    "app.tree.filter.cycleForward": true;
-    "app.tree.filter.cycleBackward": true;
 }
 export type AppKeybinding = keyof AppKeybindings;
 declare module "@mariozechner/pi-tui" {
@@ -185,7 +172,7 @@ export declare const KEYBINDINGS: {
         readonly description: "Exit when editor is empty";
     };
     readonly "app.suspend": {
-        readonly defaultKeys: "ctrl+z" | never[];
+        readonly defaultKeys: "ctrl+z";
         readonly description: "Suspend to background";
     };
     readonly "app.thinking.cycle": {
@@ -283,58 +270,6 @@ export declare const KEYBINDINGS: {
     readonly "app.session.deleteNoninvasive": {
         readonly defaultKeys: "ctrl+backspace";
         readonly description: "Delete session when query is empty";
-    };
-    readonly "app.models.save": {
-        readonly defaultKeys: "ctrl+s";
-        readonly description: "Save model selection";
-    };
-    readonly "app.models.enableAll": {
-        readonly defaultKeys: "ctrl+a";
-        readonly description: "Enable all models";
-    };
-    readonly "app.models.clearAll": {
-        readonly defaultKeys: "ctrl+x";
-        readonly description: "Clear all models";
-    };
-    readonly "app.models.toggleProvider": {
-        readonly defaultKeys: "ctrl+p";
-        readonly description: "Toggle all models for provider";
-    };
-    readonly "app.models.reorderUp": {
-        readonly defaultKeys: "alt+up";
-        readonly description: "Move model up in order";
-    };
-    readonly "app.models.reorderDown": {
-        readonly defaultKeys: "alt+down";
-        readonly description: "Move model down in order";
-    };
-    readonly "app.tree.filter.default": {
-        readonly defaultKeys: "ctrl+d";
-        readonly description: "Tree filter: default view";
-    };
-    readonly "app.tree.filter.noTools": {
-        readonly defaultKeys: "ctrl+t";
-        readonly description: "Tree filter: hide tool results";
-    };
-    readonly "app.tree.filter.userOnly": {
-        readonly defaultKeys: "ctrl+u";
-        readonly description: "Tree filter: user messages only";
-    };
-    readonly "app.tree.filter.labeledOnly": {
-        readonly defaultKeys: "ctrl+l";
-        readonly description: "Tree filter: labeled entries only";
-    };
-    readonly "app.tree.filter.all": {
-        readonly defaultKeys: "ctrl+a";
-        readonly description: "Tree filter: show all entries";
-    };
-    readonly "app.tree.filter.cycleForward": {
-        readonly defaultKeys: "ctrl+o";
-        readonly description: "Tree filter: cycle forward";
-    };
-    readonly "app.tree.filter.cycleBackward": {
-        readonly defaultKeys: "shift+ctrl+o";
-        readonly description: "Tree filter: cycle backward";
     };
 };
 export declare function migrateKeybindingsConfig(rawConfig: Record<string, unknown>): {

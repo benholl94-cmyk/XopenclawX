@@ -9,12 +9,10 @@ export declare class AssistantMessageComponent extends Container {
     private markdownTheme;
     private hiddenThinkingLabel;
     private lastMessage?;
-    private hasToolCalls;
     constructor(message?: AssistantMessage, hideThinkingBlock?: boolean, markdownTheme?: MarkdownTheme, hiddenThinkingLabel?: string);
     invalidate(): void;
     setHideThinkingBlock(hide: boolean): void;
     setHiddenThinkingLabel(label: string): void;
-    render(width: number): string[];
     updateContent(message: AssistantMessage): void;
 }
 //# sourceMappingURL=assistant-message.d.ts.map

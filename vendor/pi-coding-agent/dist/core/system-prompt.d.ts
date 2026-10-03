@@ -13,8 +13,8 @@ export interface BuildSystemPromptOptions {
     promptGuidelines?: string[];
     /** Text to append to system prompt. */
     appendSystemPrompt?: string;
-    /** Working directory. */
-    cwd: string;
+    /** Working directory. Default: process.cwd() */
+    cwd?: string;
     /** Pre-loaded context files. */
     contextFiles?: Array<{
         path: string;
@@ -24,5 +24,5 @@ export interface BuildSystemPromptOptions {
     skills?: Skill[];
 }
 /** Build the system prompt with tools, guidelines, and context */
-export declare function buildSystemPrompt(options: BuildSystemPromptOptions): string;
+export declare function buildSystemPrompt(options?: BuildSystemPromptOptions): string;
 //# sourceMappingURL=system-prompt.d.ts.map

@@ -1,15 +1,14 @@
-export interface ShellConfig {
-    shell: string;
-    args: string[];
-}
 /**
- * Resolve shell configuration based on platform and an optional explicit shell path.
+ * Get shell configuration based on platform.
  * Resolution order:
- * 1. User-specified shellPath
+ * 1. User-specified shellPath in settings.json
  * 2. On Windows: Git Bash in known locations, then bash on PATH
  * 3. On Unix: /bin/bash, then bash on PATH, then fallback to sh
  */
-export declare function getShellConfig(customShellPath?: string): ShellConfig;
+export declare function getShellConfig(): {
+    shell: string;
+    args: string[];
+};
 export declare function getShellEnv(): NodeJS.ProcessEnv;
 /**
  * Sanitize binary output for display/storage.
@@ -20,9 +19,6 @@ export declare function getShellEnv(): NodeJS.ProcessEnv;
  * - Characters with undefined code points
  */
 export declare function sanitizeBinaryOutput(str: string): string;
-export declare function trackDetachedChildPid(pid: number): void;
-export declare function untrackDetachedChildPid(pid: number): void;
-export declare function killTrackedDetachedChildren(): void;
 /**
  * Kill a process and all its children (cross-platform)
  */

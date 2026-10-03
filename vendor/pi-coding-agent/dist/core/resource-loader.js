@@ -2,9 +2,9 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import chalk from "chalk";
-import { CONFIG_DIR_NAME } from "../config.js";
+import { CONFIG_DIR_NAME, getAgentDir } from "../config.js";
 import { loadThemeFromPath } from "../modes/interactive/theme/theme.js";
-import { canonicalizePath, isLocalPath } from "../utils/paths.js";
+import { isLocalPath } from "../utils/paths.js";
 import { createEventBus } from "./event-bus.js";
 import { createExtensionRuntime, loadExtensionFromFactory, loadExtensions } from "./extensions/loader.js";
 import { DefaultPackageManager } from "./package-manager.js";
@@ -28,7 +28,7 @@ function resolvePromptInput(input, description) {
     return input;
 }
 function loadContextFileFromDir(dir) {
-    const candidates = ["AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
+    const candidates = ["AGENTS.md", "CLAUDE.md"];
     for (const filename of candidates) {
         const filePath = join(dir, filename);
         if (existsSync(filePath)) {
@@ -45,9 +45,9 @@ function loadContextFileFromDir(dir) {
     }
     return null;
 }
-export function loadProjectContextFiles(options) {
-    const resolvedCwd = options.cwd;
-    const resolvedAgentDir = options.agentDir;
+function loadProjectContextFiles(options = {}) {
+    const resolvedCwd = options.cwd ?? process.cwd();
+    const resolvedAgentDir = options.agentDir ?? getAgentDir();
     const contextFiles = [];
     const seenPaths = new Set();
     const globalContext = loadContextFileFromDir(resolvedAgentDir);
@@ -89,7 +89,6 @@ export class DefaultResourceLoader {
     noSkills;
     noPromptTemplates;
     noThemes;
-    noContextFiles;
     systemPromptSource;
     appendSystemPromptSource;
     extensionsOverride;
@@ -116,8 +115,8 @@ export class DefaultResourceLoader {
     lastPromptPaths;
     lastThemePaths;
     constructor(options) {
-        this.cwd = options.cwd;
-        this.agentDir = options.agentDir;
+        this.cwd = options.cwd ?? process.cwd();
+        this.agentDir = options.agentDir ?? getAgentDir();
         this.settingsManager = options.settingsManager ?? SettingsManager.create(this.cwd, this.agentDir);
         this.eventBus = options.eventBus ?? createEventBus();
         this.packageManager = new DefaultPackageManager({
@@ -134,7 +133,6 @@ export class DefaultResourceLoader {
         this.noSkills = options.noSkills ?? false;
         this.noPromptTemplates = options.noPromptTemplates ?? false;
         this.noThemes = options.noThemes ?? false;
-        this.noContextFiles = options.noContextFiles ?? false;
         this.systemPromptSource = options.systemPrompt;
         this.appendSystemPromptSource = options.appendSystemPrompt;
         this.extensionsOverride = options.extensionsOverride;
@@ -319,18 +317,14 @@ export class DefaultResourceLoader {
                 this.themeDiagnostics.push({ type: "error", message: "Theme path does not exist", path: p });
             }
         }
-        const agentsFiles = {
-            agentsFiles: this.noContextFiles ? [] : loadProjectContextFiles({ cwd: this.cwd, agentDir: this.agentDir }),
-        };
+        const agentsFiles = { agentsFiles: loadProjectContextFiles({ cwd: this.cwd, agentDir: this.agentDir }) };
         const resolvedAgentsFiles = this.agentsFilesOverride ? this.agentsFilesOverride(agentsFiles) : agentsFiles;
         this.agentsFiles = resolvedAgentsFiles.agentsFiles;
         const baseSystemPrompt = resolvePromptInput(this.systemPromptSource ?? this.discoverSystemPromptFile(), "system prompt");
         this.systemPrompt = this.systemPromptOverride ? this.systemPromptOverride(baseSystemPrompt) : baseSystemPrompt;
-        const appendSources = this.appendSystemPromptSource ??
-            (this.discoverAppendSystemPromptFile() ? [this.discoverAppendSystemPromptFile()] : []);
-        const baseAppend = appendSources
-            .map((s) => resolvePromptInput(s, "append system prompt"))
-            .filter((s) => s !== undefined);
+        const appendSource = this.appendSystemPromptSource ?? this.discoverAppendSystemPromptFile();
+        const resolvedAppend = resolvePromptInput(appendSource, "append system prompt");
+        const baseAppend = resolvedAppend ? [resolvedAppend] : [];
         this.appendSystemPrompt = this.appendSystemPromptOverride
             ? this.appendSystemPromptOverride(baseAppend)
             : baseAppend;
@@ -498,10 +492,9 @@ export class DefaultResourceLoader {
         const seen = new Set();
         for (const p of [...primary, ...additional]) {
             const resolved = this.resolveResourcePath(p);
-            const canonicalPath = canonicalizePath(resolved);
-            if (seen.has(canonicalPath))
+            if (seen.has(resolved))
                 continue;
-            seen.add(canonicalPath);
+            seen.add(resolved);
             merged.push(resolved);
         }
         return merged;

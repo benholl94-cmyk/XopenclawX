@@ -7,7 +7,7 @@ import { ModelRegistry } from "./model-registry.js";
 import type { ResourceLoader } from "./resource-loader.js";
 import { SessionManager } from "./session-manager.js";
 import { SettingsManager } from "./settings-manager.js";
-import { createBashTool, createCodingTools, createEditTool, createFindTool, createGrepTool, createLsTool, createReadOnlyTools, createReadTool, createWriteTool, withFileMutationQueue } from "./tools/index.js";
+import { allTools, bashTool, codingTools, createBashTool, createCodingTools, createEditTool, createFindTool, createGrepTool, createLsTool, createReadOnlyTools, createReadTool, createWriteTool, editTool, findTool, grepTool, lsTool, readOnlyTools, readTool, type Tool, withFileMutationQueue, writeTool } from "./tools/index.js";
 export interface CreateAgentSessionOptions {
     /** Working directory for project-local discovery. Default: process.cwd() */
     cwd?: string;
@@ -26,22 +26,8 @@ export interface CreateAgentSessionOptions {
         model: Model<any>;
         thinkingLevel?: ThinkingLevel;
     }>;
-    /**
-     * Optional default tool suppression mode when no explicit allowlist is provided.
-     *
-     * - "all": start with no tools enabled
-     * - "builtin": disable the default built-in tools (read, bash, edit, write)
-     *   but keep extension/custom tools enabled
-     */
-    noTools?: "all" | "builtin";
-    /**
-     * Optional allowlist of tool names.
-     *
-     * When omitted, pi enables the default built-in tools (read, bash, edit, write)
-     * and leaves extension/custom tools enabled unless `noTools` changes that default.
-     * When provided, only the listed tool names are enabled.
-     */
-    tools?: string[];
+    /** Built-in tools to use. Default: codingTools [read, bash, edit, write] */
+    tools?: Tool[];
     /** Custom tools to register (in addition to built-in tools). */
     customTools?: ToolDefinition[];
     /** Resource loader. When omitted, DefaultResourceLoader is used. */
@@ -67,7 +53,7 @@ export type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, Extension
 export type { PromptTemplate } from "./prompt-templates.js";
 export type { Skill } from "./skills.js";
 export type { Tool } from "./tools/index.js";
-export { withFileMutationQueue, createCodingTools, createReadOnlyTools, createReadTool, createBashTool, createEditTool, createWriteTool, createGrepTool, createFindTool, createLsTool, };
+export { readTool, bashTool, editTool, writeTool, grepTool, findTool, lsTool, codingTools, readOnlyTools, allTools as allBuiltInTools, withFileMutationQueue, createCodingTools, createReadOnlyTools, createReadTool, createBashTool, createEditTool, createWriteTool, createGrepTool, createFindTool, createLsTool, };
 /**
  * Create an AgentSession with the specified options.
  *

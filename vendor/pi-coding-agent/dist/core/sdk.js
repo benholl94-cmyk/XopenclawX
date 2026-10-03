@@ -1,9 +1,8 @@
 import { join } from "node:path";
 import { Agent } from "@mariozechner/pi-agent-core";
-import { clampThinkingLevel, streamSimple } from "@mariozechner/pi-ai";
-import { getAgentDir } from "../config.js";
+import { streamSimple } from "@mariozechner/pi-ai";
+import { getAgentDir, getDocsPath } from "../config.js";
 import { AgentSession } from "./agent-session.js";
-import { formatNoModelsAvailableMessage } from "./auth-guidance.js";
 import { AuthStorage } from "./auth-storage.js";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.js";
 import { convertToLlm } from "./messages.js";
@@ -12,38 +11,18 @@ import { findInitialModel } from "./model-resolver.js";
 import { DefaultResourceLoader } from "./resource-loader.js";
 import { getDefaultSessionDir, SessionManager } from "./session-manager.js";
 import { SettingsManager } from "./settings-manager.js";
-import { isInstallTelemetryEnabled } from "./telemetry.js";
 import { time } from "./timings.js";
-import { createBashTool, createCodingTools, createEditTool, createFindTool, createGrepTool, createLsTool, createReadOnlyTools, createReadTool, createWriteTool, withFileMutationQueue, } from "./tools/index.js";
+import { allTools, bashTool, codingTools, createBashTool, createCodingTools, createEditTool, createFindTool, createGrepTool, createLsTool, createReadOnlyTools, createReadTool, createWriteTool, editTool, findTool, grepTool, lsTool, readOnlyTools, readTool, withFileMutationQueue, writeTool, } from "./tools/index.js";
 // Re-exports
 export * from "./agent-session-runtime.js";
-export { withFileMutationQueue, 
+export { 
+// Pre-built tools (use process.cwd())
+readTool, bashTool, editTool, writeTool, grepTool, findTool, lsTool, codingTools, readOnlyTools, allTools as allBuiltInTools, withFileMutationQueue, 
 // Tool factories (for custom cwd)
 createCodingTools, createReadOnlyTools, createReadTool, createBashTool, createEditTool, createWriteTool, createGrepTool, createFindTool, createLsTool, };
 // Helper Functions
 function getDefaultAgentDir() {
     return getAgentDir();
-}
-function getAttributionHeaders(model, settingsManager) {
-    if (!isInstallTelemetryEnabled(settingsManager)) {
-        return undefined;
-    }
-    if (model.provider === "openrouter" || model.baseUrl.includes("openrouter.ai")) {
-        return {
-            "HTTP-Referer": "https://pi.dev",
-            "X-OpenRouter-Title": "pi",
-            "X-OpenRouter-Categories": "cli-agent",
-        };
-    }
-    if (model.provider === "cloudflare-workers-ai" ||
-        model.provider === "cloudflare-ai-gateway" ||
-        model.baseUrl.includes("api.cloudflare.com") ||
-        model.baseUrl.includes("gateway.ai.cloudflare.com")) {
-        return {
-            "User-Agent": "pi-coding-agent",
-        };
-    }
-    return undefined;
 }
 /**
  * Create an AgentSession with the specified options.
@@ -81,7 +60,7 @@ function getAttributionHeaders(model, settingsManager) {
  * ```
  */
 export async function createAgentSession(options = {}) {
-    const cwd = options.cwd ?? options.sessionManager?.getCwd() ?? process.cwd();
+    const cwd = options.cwd ?? process.cwd();
     const agentDir = options.agentDir ?? getDefaultAgentDir();
     let resourceLoader = options.resourceLoader;
     // Use provided or create AuthStorage and ModelRegistry
@@ -124,7 +103,7 @@ export async function createAgentSession(options = {}) {
         });
         model = result.model;
         if (!model) {
-            modelFallbackMessage = formatNoModelsAvailableMessage();
+            modelFallbackMessage = `No models available. Use /login or set an API key environment variable. See ${join(getDocsPath(), "providers.md")}. Then use /model to select a model.`;
         }
         else if (modelFallbackMessage) {
             modelFallbackMessage += `. Using ${model.provider}/${model.id}`;
@@ -142,19 +121,13 @@ export async function createAgentSession(options = {}) {
         thinkingLevel = settingsManager.getDefaultThinkingLevel() ?? DEFAULT_THINKING_LEVEL;
     }
     // Clamp to model capabilities
-    if (!model) {
+    if (!model || !model.reasoning) {
         thinkingLevel = "off";
     }
-    else {
-        thinkingLevel = clampThinkingLevel(model, thinkingLevel);
-    }
     const defaultActiveToolNames = ["read", "bash", "edit", "write"];
-    const allowedToolNames = options.tools ?? (options.noTools === "all" ? [] : undefined);
     const initialActiveToolNames = options.tools
-        ? [...options.tools]
-        : options.noTools
-            ? []
-            : defaultActiveToolNames;
+        ? options.tools.map((t) => t.name).filter((n) => n in allTools)
+        : defaultActiveToolNames;
     let agent;
     // Create convertToLlm wrapper that filters images if blockImages is enabled (defense-in-depth)
     const convertToLlmWithBlockImages = (messages) => {
@@ -200,17 +173,10 @@ export async function createAgentSession(options = {}) {
             if (!auth.ok) {
                 throw new Error(auth.error);
             }
-            const providerRetrySettings = settingsManager.getProviderRetrySettings();
-            const attributionHeaders = getAttributionHeaders(model, settingsManager);
             return streamSimple(model, context, {
                 ...options,
                 apiKey: auth.apiKey,
-                timeoutMs: options?.timeoutMs ?? providerRetrySettings.timeoutMs,
-                maxRetries: options?.maxRetries ?? providerRetrySettings.maxRetries,
-                maxRetryDelayMs: options?.maxRetryDelayMs ?? providerRetrySettings.maxRetryDelayMs,
-                headers: attributionHeaders || auth.headers || options?.headers
-                    ? { ...attributionHeaders, ...auth.headers, ...options?.headers }
-                    : undefined,
+                headers: auth.headers || options?.headers ? { ...auth.headers, ...options?.headers } : undefined,
             });
         },
         onPayload: async (payload, _model) => {
@@ -219,17 +185,6 @@ export async function createAgentSession(options = {}) {
                 return payload;
             }
             return runner.emitBeforeProviderRequest(payload);
-        },
-        onResponse: async (response, _model) => {
-            const runner = extensionRunnerRef.current;
-            if (!runner?.hasHandlers("after_provider_response")) {
-                return;
-            }
-            await runner.emit({
-                type: "after_provider_response",
-                status: response.status,
-                headers: response.headers,
-            });
         },
         sessionId: sessionManager.getSessionId(),
         transformContext: async (messages) => {
@@ -242,7 +197,7 @@ export async function createAgentSession(options = {}) {
         followUpMode: settingsManager.getFollowUpMode(),
         transport: settingsManager.getTransport(),
         thinkingBudgets: settingsManager.getThinkingBudgets(),
-        maxRetryDelayMs: settingsManager.getProviderRetrySettings().maxRetryDelayMs,
+        maxRetryDelayMs: settingsManager.getRetrySettings().maxDelayMs,
     });
     // Restore messages if session has existing data
     if (hasExistingSession) {
@@ -268,7 +223,6 @@ export async function createAgentSession(options = {}) {
         customTools: options.customTools,
         modelRegistry,
         initialActiveToolNames,
-        allowedToolNames,
         extensionRunnerRef,
         sessionStartEvent: options.sessionStartEvent,
     });

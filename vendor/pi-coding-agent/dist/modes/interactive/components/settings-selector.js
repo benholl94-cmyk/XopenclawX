@@ -16,35 +16,6 @@ const THINKING_DESCRIPTIONS = {
 /**
  * A submenu component for selecting from a list of options.
  */
-class WarningSettingsSubmenu extends Container {
-    settingsList;
-    state;
-    constructor(warnings, onChange, onCancel) {
-        super();
-        this.state = { ...warnings };
-        const items = [
-            {
-                id: "anthropic-extra-usage",
-                label: "Anthropic extra usage",
-                description: "Warn when Anthropic subscription auth may use paid extra usage",
-                currentValue: (this.state.anthropicExtraUsage ?? true) ? "true" : "false",
-                values: ["true", "false"],
-            },
-        ];
-        this.settingsList = new SettingsList(items, Math.min(items.length, 10), getSettingsListTheme(), (id, newValue) => {
-            switch (id) {
-                case "anthropic-extra-usage":
-                    this.state = { ...this.state, anthropicExtraUsage: newValue === "true" };
-                    onChange({ ...this.state });
-                    break;
-            }
-        }, onCancel);
-        this.addChild(this.settingsList);
-    }
-    handleInput(data) {
-        this.settingsList.handleInput(data);
-    }
-}
 class SelectSubmenu extends Container {
     selectList;
     constructor(title, description, options, currentValue, onSelect, onCancel, onSelectionChange) {
@@ -91,7 +62,6 @@ export class SettingsSelectorComponent extends Container {
     constructor(config, callbacks) {
         super();
         const supportsImages = getCapabilities().images;
-        let currentWarnings = { ...config.warnings };
         const items = [
             {
                 id: "autocompact",
@@ -119,7 +89,7 @@ export class SettingsSelectorComponent extends Container {
                 label: "Transport",
                 description: "Preferred transport for providers that support multiple transports",
                 currentValue: config.transport,
-                values: ["sse", "websocket", "websocket-cached", "auto"],
+                values: ["sse", "websocket", "auto"],
             },
             {
                 id: "hide-thinking",
@@ -143,13 +113,6 @@ export class SettingsSelectorComponent extends Container {
                 values: ["true", "false"],
             },
             {
-                id: "install-telemetry",
-                label: "Install telemetry",
-                description: "Send an anonymous version/update ping after changelog-detected updates",
-                currentValue: config.enableInstallTelemetry ? "true" : "false",
-                values: ["true", "false"],
-            },
-            {
                 id: "double-escape-action",
                 label: "Double-escape action",
                 description: "Action when pressing Escape twice with empty editor",
@@ -162,16 +125,6 @@ export class SettingsSelectorComponent extends Container {
                 description: "Default filter when opening /tree",
                 currentValue: config.treeFilterMode,
                 values: ["default", "no-tools", "user-only", "labeled-only", "all"],
-            },
-            {
-                id: "warnings",
-                label: "Warnings",
-                description: "Enable or disable individual warnings",
-                currentValue: "configure",
-                submenu: (_currentValue, done) => new WarningSettingsSubmenu(currentWarnings, (warnings) => {
-                    currentWarnings = warnings;
-                    callbacks.onWarningsChange(warnings);
-                }, () => done()),
             },
             {
                 id: "thinking",
@@ -218,16 +171,9 @@ export class SettingsSelectorComponent extends Container {
                 currentValue: config.showImages ? "true" : "false",
                 values: ["true", "false"],
             });
-            items.splice(2, 0, {
-                id: "image-width-cells",
-                label: "Image width",
-                description: "Preferred inline image width in terminal cells",
-                currentValue: String(config.imageWidthCells),
-                values: ["60", "80", "120"],
-            });
         }
         // Image auto-resize toggle (always available, affects both attached and read images)
-        items.splice(supportsImages ? 3 : 1, 0, {
+        items.splice(supportsImages ? 2 : 1, 0, {
             id: "auto-resize-images",
             label: "Auto-resize images",
             description: "Resize large images to 2000x2000 max for better model compatibility",
@@ -288,15 +234,6 @@ export class SettingsSelectorComponent extends Container {
             currentValue: config.clearOnShrink ? "true" : "false",
             values: ["true", "false"],
         });
-        // Terminal progress toggle (insert after clear-on-shrink)
-        const clearOnShrinkIndex = items.findIndex((item) => item.id === "clear-on-shrink");
-        items.splice(clearOnShrinkIndex + 1, 0, {
-            id: "terminal-progress",
-            label: "Terminal progress",
-            description: "Show OSC 9;4 progress indicators in the terminal tab bar",
-            currentValue: config.showTerminalProgress ? "true" : "false",
-            values: ["true", "false"],
-        });
         // Add borders
         this.addChild(new DynamicBorder());
         this.settingsList = new SettingsList(items, 10, getSettingsListTheme(), (id, newValue) => {
@@ -306,9 +243,6 @@ export class SettingsSelectorComponent extends Container {
                     break;
                 case "show-images":
                     callbacks.onShowImagesChange(newValue === "true");
-                    break;
-                case "image-width-cells":
-                    callbacks.onImageWidthCellsChange(parseInt(newValue, 10));
                     break;
                 case "auto-resize-images":
                     callbacks.onAutoResizeImagesChange(newValue === "true");
@@ -337,9 +271,6 @@ export class SettingsSelectorComponent extends Container {
                 case "quiet-startup":
                     callbacks.onQuietStartupChange(newValue === "true");
                     break;
-                case "install-telemetry":
-                    callbacks.onEnableInstallTelemetryChange(newValue === "true");
-                    break;
                 case "double-escape-action":
                     callbacks.onDoubleEscapeActionChange(newValue);
                     break;
@@ -357,9 +288,6 @@ export class SettingsSelectorComponent extends Container {
                     break;
                 case "clear-on-shrink":
                     callbacks.onClearOnShrinkChange(newValue === "true");
-                    break;
-                case "terminal-progress":
-                    callbacks.onShowTerminalProgressChange(newValue === "true");
                     break;
             }
         }, callbacks.onCancel, { enableSearch: true });

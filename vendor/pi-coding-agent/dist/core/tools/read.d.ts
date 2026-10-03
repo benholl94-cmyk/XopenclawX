@@ -1,11 +1,11 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { type Static, Type } from "typebox";
+import { type Static } from "@sinclair/typebox";
 import type { ToolDefinition } from "../extensions/types.js";
 import { type TruncationResult } from "./truncate.js";
-declare const readSchema: Type.TObject<{
-    path: Type.TString;
-    offset: Type.TOptional<Type.TNumber>;
-    limit: Type.TOptional<Type.TNumber>;
+declare const readSchema: import("@sinclair/typebox").TObject<{
+    path: import("@sinclair/typebox").TString;
+    offset: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TNumber>;
+    limit: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TNumber>;
 }>;
 export type ReadToolInput = Static<typeof readSchema>;
 export interface ReadToolDetails {
@@ -31,5 +31,16 @@ export interface ReadToolOptions {
 }
 export declare function createReadToolDefinition(cwd: string, options?: ReadToolOptions): ToolDefinition<typeof readSchema, ReadToolDetails | undefined>;
 export declare function createReadTool(cwd: string, options?: ReadToolOptions): AgentTool<typeof readSchema>;
+/** Default read tool using process.cwd() for backwards compatibility. */
+export declare const readToolDefinition: ToolDefinition<import("@sinclair/typebox").TObject<{
+    path: import("@sinclair/typebox").TString;
+    offset: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TNumber>;
+    limit: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TNumber>;
+}>, ReadToolDetails | undefined, any>;
+export declare const readTool: AgentTool<import("@sinclair/typebox").TObject<{
+    path: import("@sinclair/typebox").TString;
+    offset: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TNumber>;
+    limit: import("@sinclair/typebox").TOptional<import("@sinclair/typebox").TNumber>;
+}>, any>;
 export {};
 //# sourceMappingURL=read.d.ts.map

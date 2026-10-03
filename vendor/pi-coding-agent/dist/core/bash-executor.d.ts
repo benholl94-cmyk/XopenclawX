@@ -5,7 +5,7 @@
  * - AgentSession.executeBash() for interactive and RPC modes
  * - Direct calls from modes that need bash execution
  */
-import type { BashOperations } from "./tools/bash.js";
+import { type BashOperations } from "./tools/bash.js";
 export interface BashExecutorOptions {
     /** Callback for streaming output chunks (already sanitized) */
     onChunk?: (chunk: string) => void;
@@ -24,6 +24,20 @@ export interface BashResult {
     /** Path to temp file containing full output (if output exceeded truncation threshold) */
     fullOutputPath?: string;
 }
+/**
+ * Execute a bash command with optional streaming and cancellation support.
+ *
+ * Uses the same local BashOperations backend as createBashTool() so interactive
+ * user bash and tool-invoked bash share the same process spawning behavior.
+ * Sanitization, newline normalization, temp-file capture, and truncation still
+ * happen in executeBashWithOperations(), so reusing the local backend does not
+ * change output processing behavior.
+ *
+ * @param command - The bash command to execute
+ * @param options - Optional streaming callback and abort signal
+ * @returns Promise resolving to execution result
+ */
+export declare function executeBash(command: string, options?: BashExecutorOptions): Promise<BashResult>;
 /**
  * Execute a bash command using custom BashOperations.
  * Used for remote execution (SSH, containers, etc.).

@@ -4,7 +4,6 @@ import { unlink } from "node:fs/promises";
 import * as os from "node:os";
 import { Container, getKeybindings, Input, Spacer, Text, truncateToWidth, visibleWidth, } from "@mariozechner/pi-tui";
 import { KeybindingsManager } from "../../../core/keybindings.js";
-import { canonicalizePath as _canonicalizePath } from "../../../utils/paths.js";
 import { theme } from "../theme/theme.js";
 import { DynamicBorder } from "./dynamic-border.js";
 import { keyHint, keyText } from "./keybinding-hints.js";
@@ -37,11 +36,6 @@ function formatSessionDate(date) {
     if (diffDays < 365)
         return `${Math.floor(diffDays / 30)}mo`;
     return `${Math.floor(diffDays / 365)}y`;
-}
-function canonicalizePath(path) {
-    if (!path)
-        return path;
-    return _canonicalizePath(path);
 }
 class SessionSelectorHeader {
     scope;
@@ -167,14 +161,12 @@ class SessionSelectorHeader {
 function buildSessionTree(sessions) {
     const byPath = new Map();
     for (const session of sessions) {
-        const sessionPath = canonicalizePath(session.path) ?? session.path;
-        byPath.set(sessionPath, { session, children: [] });
+        byPath.set(session.path, { session, children: [] });
     }
     const roots = [];
     for (const session of sessions) {
-        const sessionPath = canonicalizePath(session.path) ?? session.path;
-        const node = byPath.get(sessionPath);
-        const parentPath = canonicalizePath(session.parentSessionPath);
+        const node = byPath.get(session.path);
+        const parentPath = session.parentSessionPath;
         if (parentPath && byPath.has(parentPath)) {
             byPath.get(parentPath).children.push(node);
         }
@@ -229,7 +221,7 @@ class SessionList {
     keybindings;
     showPath = false;
     confirmingDeletePath = null;
-    currentSessionCanonicalPath;
+    currentSessionFilePath;
     onSelect;
     onCancel;
     onExit = () => { };
@@ -259,7 +251,7 @@ class SessionList {
         this.sortMode = sortMode;
         this.nameFilter = nameFilter;
         this.keybindings = keybindings;
-        this.currentSessionCanonicalPath = canonicalizePath(currentSessionFilePath);
+        this.currentSessionFilePath = currentSessionFilePath;
         this.filterSessions("");
         // Handle Enter in search input - select current item
         this.searchInput.onSubmit = () => {
@@ -313,16 +305,11 @@ class SessionList {
         if (!selected)
             return;
         // Prevent deleting current session
-        if (this.isCurrentSessionPath(selected.session.path)) {
+        if (this.currentSessionFilePath && selected.session.path === this.currentSessionFilePath) {
             this.onError?.("Cannot delete the currently active session");
             return;
         }
         this.setConfirmingDeletePath(selected.session.path);
-    }
-    isCurrentSessionPath(path) {
-        if (!this.currentSessionCanonicalPath)
-            return false;
-        return (canonicalizePath(path) ?? path) === this.currentSessionCanonicalPath;
     }
     invalidate() { }
     render(width) {
@@ -361,7 +348,7 @@ class SessionList {
             const session = node.session;
             const isSelected = i === this.selectedIndex;
             const isConfirmingDelete = session.path === this.confirmingDeletePath;
-            const isCurrent = this.isCurrentSessionPath(session.path);
+            const isCurrent = this.currentSessionFilePath === session.path;
             // Build tree prefix
             const prefix = this.buildTreePrefix(node);
             // Session display text (name or first message)

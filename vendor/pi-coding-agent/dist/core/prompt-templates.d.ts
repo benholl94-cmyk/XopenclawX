@@ -5,7 +5,6 @@ import { type SourceInfo } from "./source-info.js";
 export interface PromptTemplate {
     name: string;
     description: string;
-    argumentHint?: string;
     content: string;
     sourceInfo: SourceInfo;
     filePath: string;
@@ -28,14 +27,14 @@ export declare function parseCommandArgs(argsString: string): string[];
  */
 export declare function substituteArgs(content: string, args: string[]): string;
 export interface LoadPromptTemplatesOptions {
-    /** Working directory for project-local templates. */
-    cwd: string;
-    /** Agent config directory for global templates. */
-    agentDir: string;
-    /** Explicit prompt template paths (files or directories). */
-    promptPaths: string[];
-    /** Include default prompt directories. */
-    includeDefaults: boolean;
+    /** Working directory for project-local templates. Default: process.cwd() */
+    cwd?: string;
+    /** Agent config directory for global templates. Default: from getPromptsDir() */
+    agentDir?: string;
+    /** Explicit prompt template paths (files or directories) */
+    promptPaths?: string[];
+    /** Include default prompt directories. Default: true */
+    includeDefaults?: boolean;
 }
 /**
  * Load all prompt templates from:
@@ -43,7 +42,7 @@ export interface LoadPromptTemplatesOptions {
  * 2. Project: cwd/{CONFIG_DIR_NAME}/prompts/
  * 3. Explicit prompt paths
  */
-export declare function loadPromptTemplates(options: LoadPromptTemplatesOptions): PromptTemplate[];
+export declare function loadPromptTemplates(options?: LoadPromptTemplatesOptions): PromptTemplate[];
 /**
  * Expand a prompt template if it matches a template name.
  * Returns the expanded content or the original text if not a template.

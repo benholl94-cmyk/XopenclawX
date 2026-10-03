@@ -2,12 +2,10 @@ import { Container, type TUI } from "@mariozechner/pi-tui";
 import type { ToolDefinition } from "../../../core/extensions/types.js";
 export interface ToolExecutionOptions {
     showImages?: boolean;
-    imageWidthCells?: number;
 }
 export declare class ToolExecutionComponent extends Container {
     private contentBox;
     private contentText;
-    private selfRenderContainer;
     private callRendererComponent?;
     private resultRendererComponent?;
     private rendererState;
@@ -18,7 +16,6 @@ export declare class ToolExecutionComponent extends Container {
     private args;
     private expanded;
     private showImages;
-    private imageWidthCells;
     private isPartial;
     private toolDefinition?;
     private builtInToolDefinition?;
@@ -29,11 +26,10 @@ export declare class ToolExecutionComponent extends Container {
     private result?;
     private convertedImages;
     private hideComponent;
-    constructor(toolName: string, toolCallId: string, args: any, options: ToolExecutionOptions | undefined, toolDefinition: ToolDefinition<any, any> | undefined, ui: TUI, cwd: string);
+    constructor(toolName: string, toolCallId: string, args: any, options: ToolExecutionOptions | undefined, toolDefinition: ToolDefinition<any, any> | undefined, ui: TUI, cwd?: string);
     private getCallRenderer;
     private getResultRenderer;
     private hasRendererDefinition;
-    private getRenderShell;
     private getRenderContext;
     private createCallFallback;
     private createResultFallback;
@@ -53,7 +49,6 @@ export declare class ToolExecutionComponent extends Container {
     private maybeConvertImagesForKitty;
     setExpanded(expanded: boolean): void;
     setShowImages(show: boolean): void;
-    setImageWidthCells(width: number): void;
     invalidate(): void;
     render(width: number): string[];
     private updateDisplay;

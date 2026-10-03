@@ -15,11 +15,10 @@ export declare class FooterDataProvider {
     private branchChangeCallbacks;
     private availableProviderCount;
     private refreshTimer;
-    private gitWatcherRetryTimer;
     private refreshInFlight;
     private refreshPending;
     private disposed;
-    constructor(cwd: string);
+    constructor(cwd?: string);
     /** Current git branch, null if not in repo, "detached" if detached HEAD */
     getGitBranch(): string | null;
     /** Extension status texts set via ctx.ui.setStatus() */
@@ -42,9 +41,6 @@ export declare class FooterDataProvider {
     private refreshGitBranchAsync;
     private resolveGitBranchSync;
     private resolveGitBranchAsync;
-    private clearGitWatchers;
-    private scheduleGitWatcherRetry;
-    private handleGitWatcherError;
     private setupGitWatcher;
 }
 /** Read-only view for extensions - excludes setExtensionStatus, setAvailableProviderCount and dispose */

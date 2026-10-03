@@ -175,13 +175,6 @@ export declare class RpcClient {
         cancelled: boolean;
     }>;
     /**
-     * Clone the current active branch into a new session.
-     * @returns Object with `cancelled: true` if an extension cancelled the clone
-     */
-    clone(): Promise<{
-        cancelled: boolean;
-    }>;
-    /**
      * Get messages available for forking.
      */
     getForkMessages(): Promise<Array<{

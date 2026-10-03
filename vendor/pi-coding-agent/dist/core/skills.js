@@ -1,10 +1,9 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "fs";
 import ignore from "ignore";
 import { homedir } from "os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "path";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.js";
 import { parseFrontmatter } from "../utils/frontmatter.js";
-import { canonicalizePath } from "../utils/paths.js";
 import { createSyntheticSourceInfo } from "./source-info.js";
 /** Max name length per spec */
 const MAX_NAME_LENGTH = 64;
@@ -306,8 +305,8 @@ function resolveSkillPath(p, cwd) {
  * Load skills from all configured locations.
  * Returns skills and any validation diagnostics.
  */
-export function loadSkills(options) {
-    const { cwd, agentDir, skillPaths, includeDefaults } = options;
+export function loadSkills(options = {}) {
+    const { cwd = process.cwd(), agentDir, skillPaths = [], includeDefaults = true } = options;
     // Resolve agentDir - if not provided, use default from config
     const resolvedAgentDir = agentDir ?? getAgentDir();
     const skillMap = new Map();
@@ -318,7 +317,13 @@ export function loadSkills(options) {
         allDiagnostics.push(...result.diagnostics);
         for (const skill of result.skills) {
             // Resolve symlinks to detect duplicate files
-            const realPath = canonicalizePath(skill.filePath);
+            let realPath;
+            try {
+                realPath = realpathSync(skill.filePath);
+            }
+            catch {
+                realPath = skill.filePath;
+            }
             // Skip silently if we've already loaded this exact file (via symlink)
             if (realPathSet.has(realPath)) {
                 continue;

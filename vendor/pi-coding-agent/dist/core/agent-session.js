@@ -13,26 +13,25 @@
  * Modes use this class and add their own I/O layer on top.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
-import { clampThinkingLevel, cleanupSessionResources, getSupportedThinkingLevels, isContextOverflow, modelsAreEqual, resetApiProviders, } from "@mariozechner/pi-ai";
+import { basename, dirname, join, resolve } from "node:path";
+import { isContextOverflow, modelsAreEqual, resetApiProviders, supportsXhigh } from "@mariozechner/pi-ai";
+import { getDocsPath } from "../config.js";
 import { theme } from "../modes/interactive/theme/theme.js";
 import { stripFrontmatter } from "../utils/frontmatter.js";
 import { sleep } from "../utils/sleep.js";
-import { formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "./auth-guidance.js";
 import { executeBashWithOperations } from "./bash-executor.js";
 import { calculateContextTokens, collectEntriesForBranchSummary, compact, estimateContextTokens, generateBranchSummary, prepareCompaction, shouldCompact, } from "./compaction/index.js";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.js";
 import { exportSessionToHtml } from "./export-html/index.js";
 import { createToolHtmlRenderer } from "./export-html/tool-renderer.js";
 import { ExtensionRunner, wrapRegisteredTools, } from "./extensions/index.js";
-import { emitSessionShutdownEvent } from "./extensions/runner.js";
 import { expandPromptTemplate } from "./prompt-templates.js";
 import { CURRENT_SESSION_VERSION, getLatestCompactionEntry } from "./session-manager.js";
 import { createSyntheticSourceInfo } from "./source-info.js";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { createLocalBashOperations } from "./tools/bash.js";
 import { createAllToolDefinitions } from "./tools/index.js";
-import { createToolDefinitionFromAgentTool } from "./tools/tool-definition-wrapper.js";
+import { createToolDefinitionFromAgentTool, wrapToolDefinition } from "./tools/tool-definition-wrapper.js";
 /**
  * Parse a skill block from message text.
  * Returns null if the text doesn't contain a skill block.
@@ -53,6 +52,8 @@ export function parseSkillBlock(text) {
 // ============================================================================
 /** Standard thinking levels */
 const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high"];
+/** Thinking levels including xhigh (for supported models) */
+const THINKING_LEVELS_WITH_XHIGH = ["off", "minimal", "low", "medium", "high", "xhigh"];
 // ============================================================================
 // AgentSession Class
 // ============================================================================
@@ -86,7 +87,7 @@ export class AgentSession {
     _bashAbortController = undefined;
     _pendingBashMessages = [];
     // Extension system
-    _extensionRunner;
+    _extensionRunner = undefined;
     _turnIndex = 0;
     _resourceLoader;
     _customTools;
@@ -94,7 +95,6 @@ export class AgentSession {
     _cwd;
     _extensionRunnerRef;
     _initialActiveToolNames;
-    _allowedToolNames;
     _baseToolsOverride;
     _sessionStartEvent;
     _extensionUIContext;
@@ -111,7 +111,6 @@ export class AgentSession {
     _toolPromptGuidelines = new Map();
     // Base system prompt (without extension appends) - used to apply fresh appends each turn
     _baseSystemPrompt = "";
-    _baseSystemPromptOptions;
     constructor(config) {
         this.agent = config.agent;
         this.sessionManager = config.sessionManager;
@@ -123,7 +122,6 @@ export class AgentSession {
         this._modelRegistry = config.modelRegistry;
         this._extensionRunnerRef = config.extensionRunnerRef;
         this._initialActiveToolNames = config.initialActiveToolNames;
-        this._allowedToolNames = config.allowedToolNames ? new Set(config.allowedToolNames) : undefined;
         this._baseToolsOverride = config.baseToolsOverride;
         this._sessionStartEvent = config.sessionStartEvent ?? { type: "session_start", reason: "startup" };
         // Always subscribe to agent events for internal handling
@@ -142,9 +140,6 @@ export class AgentSession {
     async _getRequiredRequestAuth(model) {
         const result = await this._modelRegistry.getApiKeyAndHeaders(model);
         if (!result.ok) {
-            if (result.error.startsWith("No API key found")) {
-                throw new Error(formatNoApiKeyFoundMessage(model.provider));
-            }
             throw new Error(result.error);
         }
         if (result.apiKey) {
@@ -156,7 +151,8 @@ export class AgentSession {
                 `Credentials may have expired or network is unavailable. ` +
                 `Run '/login ${model.provider}' to re-authenticate.`);
         }
-        throw new Error(formatNoApiKeyFoundMessage(model.provider));
+        throw new Error(`No API key found for ${model.provider}.\n\n` +
+            `Use /login or set an API key environment variable. See ${join(getDocsPath(), "providers.md")}`);
     }
     /**
      * Install tool hooks once on the Agent instance.
@@ -169,7 +165,7 @@ export class AgentSession {
     _installAgentToolHooks() {
         this.agent.beforeToolCall = async ({ toolCall, args }) => {
             const runner = this._extensionRunner;
-            if (!runner.hasHandlers("tool_call")) {
+            if (!runner?.hasHandlers("tool_call")) {
                 return undefined;
             }
             await this._agentEventQueue;
@@ -190,7 +186,7 @@ export class AgentSession {
         };
         this.agent.afterToolCall = async ({ toolCall, args, result, isError }) => {
             const runner = this._extensionRunner;
-            if (!runner.hasHandlers("tool_result")) {
+            if (!runner?.hasHandlers("tool_result")) {
                 return undefined;
             }
             const hookResult = await runner.emitToolResult({
@@ -199,16 +195,15 @@ export class AgentSession {
                 toolCallId: toolCall.id,
                 input: args,
                 content: result.content,
-                details: result.details,
+                details: isError ? undefined : result.details,
                 isError,
             });
-            if (!hookResult) {
+            if (!hookResult || isError) {
                 return undefined;
             }
             return {
                 content: hookResult.content,
                 details: hookResult.details,
-                isError: hookResult.isError ?? isError,
             };
         };
     }
@@ -370,22 +365,10 @@ export class AgentSession {
         }
         return undefined;
     }
-    _replaceMessageInPlace(target, replacement) {
-        // Agent-core stores the finalized message object in its state before emitting message_end.
-        // SessionManager persistence happens later in _processAgentEvent() with event.message.
-        // Mutating this object in place keeps agent state, later turn/agent events, listeners,
-        // and the eventual SessionManager.appendMessage(event.message) persistence in sync.
-        if (target === replacement) {
-            return;
-        }
-        const targetRecord = target;
-        for (const key of Object.keys(targetRecord)) {
-            delete targetRecord[key];
-        }
-        Object.assign(targetRecord, replacement);
-    }
     /** Emit extension events based on agent events */
     async _emitExtensionEvent(event) {
+        if (!this._extensionRunner)
+            return;
         if (event.type === "agent_start") {
             this._turnIndex = 0;
             await this._extensionRunner.emit({ type: "agent_start" });
@@ -431,10 +414,7 @@ export class AgentSession {
                 type: "message_end",
                 message: event.message,
             };
-            const replacement = await this._extensionRunner.emitMessageEnd(extensionEvent);
-            if (replacement) {
-                this._replaceMessageInPlace(event.message, replacement);
-            }
+            await this._extensionRunner.emit(extensionEvent);
         }
         else if (event.type === "tool_execution_start") {
             const extensionEvent = {
@@ -506,10 +486,8 @@ export class AgentSession {
      * Call this when completely done with the session.
      */
     dispose() {
-        this._extensionRunner.invalidate("This extension ctx is stale after session replacement or reload. Do not use a captured pi or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().");
         this._disconnectFromAgent();
         this._eventListeners = [];
-        cleanupSessionResources(this.sessionId);
     }
     // =========================================================================
     // Read-only State Access
@@ -663,7 +641,7 @@ export class AgentSession {
         const appendSystemPrompt = loaderAppendSystemPrompt.length > 0 ? loaderAppendSystemPrompt.join("\n\n") : undefined;
         const loadedSkills = this._resourceLoader.getSkills().skills;
         const loadedContextFiles = this._resourceLoader.getAgentsFiles().agentsFiles;
-        this._baseSystemPromptOptions = {
+        return buildSystemPrompt({
             cwd: this._cwd,
             skills: loadedSkills,
             contextFiles: loadedContextFiles,
@@ -672,8 +650,7 @@ export class AgentSession {
             selectedTools: validToolNames,
             toolSnippets,
             promptGuidelines,
-        };
-        return buildSystemPrompt(this._baseSystemPromptOptions);
+        });
     }
     // =========================================================================
     // Prompting
@@ -689,92 +666,90 @@ export class AgentSession {
      */
     async prompt(text, options) {
         const expandPromptTemplates = options?.expandPromptTemplates ?? true;
-        const preflightResult = options?.preflightResult;
-        let messages;
-        try {
-            // Handle extension commands first (execute immediately, even during streaming)
-            // Extension commands manage their own LLM interaction via pi.sendMessage()
-            if (expandPromptTemplates && text.startsWith("/")) {
-                const handled = await this._tryExecuteExtensionCommand(text);
-                if (handled) {
-                    // Extension command executed, no prompt to send
-                    preflightResult?.(true);
-                    return;
-                }
-            }
-            // Emit input event for extension interception (before skill/template expansion)
-            let currentText = text;
-            let currentImages = options?.images;
-            if (this._extensionRunner.hasHandlers("input")) {
-                const inputResult = await this._extensionRunner.emitInput(currentText, currentImages, options?.source ?? "interactive");
-                if (inputResult.action === "handled") {
-                    preflightResult?.(true);
-                    return;
-                }
-                if (inputResult.action === "transform") {
-                    currentText = inputResult.text;
-                    currentImages = inputResult.images ?? currentImages;
-                }
-            }
-            // Expand skill commands (/skill:name args) and prompt templates (/template args)
-            let expandedText = currentText;
-            if (expandPromptTemplates) {
-                expandedText = this._expandSkillCommand(expandedText);
-                expandedText = expandPromptTemplate(expandedText, [...this.promptTemplates]);
-            }
-            // If streaming, queue via steer() or followUp() based on option
-            if (this.isStreaming) {
-                if (!options?.streamingBehavior) {
-                    throw new Error("Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.");
-                }
-                if (options.streamingBehavior === "followUp") {
-                    await this._queueFollowUp(expandedText, currentImages);
-                }
-                else {
-                    await this._queueSteer(expandedText, currentImages);
-                }
-                preflightResult?.(true);
+        // Handle extension commands first (execute immediately, even during streaming)
+        // Extension commands manage their own LLM interaction via pi.sendMessage()
+        if (expandPromptTemplates && text.startsWith("/")) {
+            const handled = await this._tryExecuteExtensionCommand(text);
+            if (handled) {
+                // Extension command executed, no prompt to send
                 return;
             }
-            // Flush any pending bash messages before the new prompt
-            this._flushPendingBashMessages();
-            // Validate model
-            if (!this.model) {
-                throw new Error(formatNoModelSelectedMessage());
+        }
+        // Emit input event for extension interception (before skill/template expansion)
+        let currentText = text;
+        let currentImages = options?.images;
+        if (this._extensionRunner?.hasHandlers("input")) {
+            const inputResult = await this._extensionRunner.emitInput(currentText, currentImages, options?.source ?? "interactive");
+            if (inputResult.action === "handled") {
+                return;
             }
-            if (!this._modelRegistry.hasConfiguredAuth(this.model)) {
-                const isOAuth = this._modelRegistry.isUsingOAuth(this.model);
-                if (isOAuth) {
-                    throw new Error(`Authentication failed for "${this.model.provider}". ` +
-                        `Credentials may have expired or network is unavailable. ` +
-                        `Run '/login ${this.model.provider}' to re-authenticate.`);
-                }
-                throw new Error(formatNoApiKeyFoundMessage(this.model.provider));
+            if (inputResult.action === "transform") {
+                currentText = inputResult.text;
+                currentImages = inputResult.images ?? currentImages;
             }
-            // Check if we need to compact before sending (catches aborted responses)
-            const lastAssistant = this._findLastAssistantMessage();
-            if (lastAssistant) {
-                await this._checkCompaction(lastAssistant, false);
+        }
+        // Expand skill commands (/skill:name args) and prompt templates (/template args)
+        let expandedText = currentText;
+        if (expandPromptTemplates) {
+            expandedText = this._expandSkillCommand(expandedText);
+            expandedText = expandPromptTemplate(expandedText, [...this.promptTemplates]);
+        }
+        // If streaming, queue via steer() or followUp() based on option
+        if (this.isStreaming) {
+            if (!options?.streamingBehavior) {
+                throw new Error("Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.");
             }
-            // Build messages array (custom message if any, then user message)
-            messages = [];
-            // Add user message
-            const userContent = [{ type: "text", text: expandedText }];
-            if (currentImages) {
-                userContent.push(...currentImages);
+            if (options.streamingBehavior === "followUp") {
+                await this._queueFollowUp(expandedText, currentImages);
             }
-            messages.push({
-                role: "user",
-                content: userContent,
-                timestamp: Date.now(),
-            });
-            // Inject any pending "nextTurn" messages as context alongside the user message
-            for (const msg of this._pendingNextTurnMessages) {
-                messages.push(msg);
+            else {
+                await this._queueSteer(expandedText, currentImages);
             }
-            this._pendingNextTurnMessages = [];
-            // Emit before_agent_start extension event
-            const result = await this._extensionRunner.emitBeforeAgentStart(expandedText, currentImages, this._baseSystemPrompt, this._baseSystemPromptOptions);
+            return;
+        }
+        // Flush any pending bash messages before the new prompt
+        this._flushPendingBashMessages();
+        // Validate model
+        if (!this.model) {
+            throw new Error("No model selected.\n\n" +
+                `Use /login or set an API key environment variable. See ${join(getDocsPath(), "providers.md")}\n\n` +
+                "Then use /model to select a model.");
+        }
+        if (!this._modelRegistry.hasConfiguredAuth(this.model)) {
+            const isOAuth = this._modelRegistry.isUsingOAuth(this.model);
+            if (isOAuth) {
+                throw new Error(`Authentication failed for "${this.model.provider}". ` +
+                    `Credentials may have expired or network is unavailable. ` +
+                    `Run '/login ${this.model.provider}' to re-authenticate.`);
+            }
+            throw new Error(`No API key found for ${this.model.provider}.\n\n` +
+                `Use /login or set an API key environment variable. See ${join(getDocsPath(), "providers.md")}`);
+        }
+        // Check if we need to compact before sending (catches aborted responses)
+        const lastAssistant = this._findLastAssistantMessage();
+        if (lastAssistant) {
+            await this._checkCompaction(lastAssistant, false);
+        }
+        // Build messages array (custom message if any, then user message)
+        const messages = [];
+        // Add user message
+        const userContent = [{ type: "text", text: expandedText }];
+        if (currentImages) {
+            userContent.push(...currentImages);
+        }
+        messages.push({
+            role: "user",
+            content: userContent,
+            timestamp: Date.now(),
+        });
+        // Inject any pending "nextTurn" messages as context alongside the user message
+        for (const msg of this._pendingNextTurnMessages) {
+            messages.push(msg);
+        }
+        this._pendingNextTurnMessages = [];
+        // Emit before_agent_start extension event
+        if (this._extensionRunner) {
+            const result = await this._extensionRunner.emitBeforeAgentStart(expandedText, currentImages, this._baseSystemPrompt);
             // Add all custom messages from extensions
             if (result?.messages) {
                 for (const msg of result.messages) {
@@ -797,14 +772,6 @@ export class AgentSession {
                 this.agent.state.systemPrompt = this._baseSystemPrompt;
             }
         }
-        catch (error) {
-            preflightResult?.(false);
-            throw error;
-        }
-        if (!messages) {
-            return;
-        }
-        preflightResult?.(true);
         await this.agent.prompt(messages);
         await this.waitForRetry();
     }
@@ -812,6 +779,8 @@ export class AgentSession {
      * Try to execute an extension command. Returns true if command was found and executed.
      */
     async _tryExecuteExtensionCommand(text) {
+        if (!this._extensionRunner)
+            return false;
         // Parse command name and args
         const spaceIndex = text.indexOf(" ");
         const commandName = spaceIndex === -1 ? text.slice(1) : text.slice(1, spaceIndex);
@@ -857,7 +826,7 @@ export class AgentSession {
         }
         catch (err) {
             // Emit error like extension commands do
-            this._extensionRunner.emitError({
+            this._extensionRunner?.emitError({
                 extensionPath: skill.filePath,
                 event: "skill_expansion",
                 error: err instanceof Error ? err.message : String(err),
@@ -936,6 +905,8 @@ export class AgentSession {
      * Throw an error if the text is an extension command.
      */
     _throwIfExtensionCommand(text) {
+        if (!this._extensionRunner)
+            return;
         const spaceIndex = text.indexOf(" ");
         const commandName = spaceIndex === -1 ? text.slice(1) : text.slice(1, spaceIndex);
         const command = this._extensionRunner.getCommand(commandName);
@@ -1063,6 +1034,8 @@ export class AgentSession {
     // Model Management
     // =========================================================================
     async _emitModelSelect(nextModel, previousModel, source) {
+        if (!this._extensionRunner)
+            return;
         if (modelsAreEqual(previousModel, nextModel))
             return;
         await this._extensionRunner.emit({
@@ -1158,20 +1131,13 @@ export class AgentSession {
         const availableLevels = this.getAvailableThinkingLevels();
         const effectiveLevel = availableLevels.includes(level) ? level : this._clampThinkingLevel(level, availableLevels);
         // Only persist if actually changing
-        const previousLevel = this.agent.state.thinkingLevel;
-        const isChanging = effectiveLevel !== previousLevel;
+        const isChanging = effectiveLevel !== this.agent.state.thinkingLevel;
         this.agent.state.thinkingLevel = effectiveLevel;
         if (isChanging) {
             this.sessionManager.appendThinkingLevelChange(effectiveLevel);
             if (this.supportsThinking() || effectiveLevel !== "off") {
                 this.settingsManager.setDefaultThinkingLevel(effectiveLevel);
             }
-            this._emit({ type: "thinking_level_changed", level: effectiveLevel });
-            void this._extensionRunner.emit({
-                type: "thinking_level_select",
-                level: effectiveLevel,
-                previousLevel,
-            });
         }
     }
     /**
@@ -1193,9 +1159,15 @@ export class AgentSession {
      * The provider will clamp to what the specific model supports internally.
      */
     getAvailableThinkingLevels() {
-        if (!this.model)
-            return THINKING_LEVELS;
-        return getSupportedThinkingLevels(this.model);
+        if (!this.supportsThinking())
+            return ["off"];
+        return this.supportsXhighThinking() ? THINKING_LEVELS_WITH_XHIGH : THINKING_LEVELS;
+    }
+    /**
+     * Check if current model supports xhigh thinking level.
+     */
+    supportsXhighThinking() {
+        return this.model ? supportsXhigh(this.model) : false;
     }
     /**
      * Check if current model supports thinking/reasoning.
@@ -1212,8 +1184,24 @@ export class AgentSession {
         }
         return this.thinkingLevel;
     }
-    _clampThinkingLevel(level, _availableLevels) {
-        return this.model ? clampThinkingLevel(this.model, level) : "off";
+    _clampThinkingLevel(level, availableLevels) {
+        const ordered = THINKING_LEVELS_WITH_XHIGH;
+        const available = new Set(availableLevels);
+        const requestedIndex = ordered.indexOf(level);
+        if (requestedIndex === -1) {
+            return availableLevels[0] ?? "off";
+        }
+        for (let i = requestedIndex; i < ordered.length; i++) {
+            const candidate = ordered[i];
+            if (available.has(candidate))
+                return candidate;
+        }
+        for (let i = requestedIndex - 1; i >= 0; i--) {
+            const candidate = ordered[i];
+            if (available.has(candidate))
+                return candidate;
+        }
+        return availableLevels[0] ?? "off";
     }
     // =========================================================================
     // Queue Mode Management
@@ -1249,7 +1237,7 @@ export class AgentSession {
         this._emit({ type: "compaction_start", reason: "manual" });
         try {
             if (!this.model) {
-                throw new Error(formatNoModelSelectedMessage());
+                throw new Error("No model selected");
             }
             const { apiKey, headers } = await this._getRequiredRequestAuth(this.model);
             const pathEntries = this.sessionManager.getBranch();
@@ -1265,7 +1253,7 @@ export class AgentSession {
             }
             let extensionCompaction;
             let fromExtension = false;
-            if (this._extensionRunner.hasHandlers("session_before_compact")) {
+            if (this._extensionRunner?.hasHandlers("session_before_compact")) {
                 const result = (await this._extensionRunner.emit({
                     type: "session_before_compact",
                     preparation,
@@ -1294,7 +1282,7 @@ export class AgentSession {
             }
             else {
                 // Generate compaction result
-                const result = await compact(preparation, this.model, apiKey, headers, customInstructions, this._compactionAbortController.signal, this.thinkingLevel);
+                const result = await compact(preparation, this.model, apiKey, headers, customInstructions, this._compactionAbortController.signal);
                 summary = result.summary;
                 firstKeptEntryId = result.firstKeptEntryId;
                 tokensBefore = result.tokensBefore;
@@ -1488,7 +1476,7 @@ export class AgentSession {
             }
             let extensionCompaction;
             let fromExtension = false;
-            if (this._extensionRunner.hasHandlers("session_before_compact")) {
+            if (this._extensionRunner?.hasHandlers("session_before_compact")) {
                 const extensionResult = (await this._extensionRunner.emit({
                     type: "session_before_compact",
                     preparation,
@@ -1524,7 +1512,7 @@ export class AgentSession {
             }
             else {
                 // Generate compaction result
-                const compactResult = await compact(preparation, this.model, apiKey, headers, undefined, this._autoCompactionAbortController.signal, this.thinkingLevel);
+                const compactResult = await compact(preparation, this.model, apiKey, headers, undefined, this._autoCompactionAbortController.signal);
                 summary = compactResult.summary;
                 firstKeptEntryId = compactResult.firstKeptEntryId;
                 tokensBefore = compactResult.tokensBefore;
@@ -1618,12 +1606,14 @@ export class AgentSession {
         if (bindings.onError !== undefined) {
             this._extensionErrorListener = bindings.onError;
         }
-        this._applyExtensionBindings(this._extensionRunner);
-        await this._extensionRunner.emit(this._sessionStartEvent);
-        await this.extendResourcesFromExtensions(this._sessionStartEvent.reason === "reload" ? "reload" : "startup");
+        if (this._extensionRunner) {
+            this._applyExtensionBindings(this._extensionRunner);
+            await this._extensionRunner.emit(this._sessionStartEvent);
+            await this.extendResourcesFromExtensions(this._sessionStartEvent.reason === "reload" ? "reload" : "startup");
+        }
     }
     async extendResourcesFromExtensions(reason) {
-        if (!this._extensionRunner.hasHandlers("resources_discover")) {
+        if (!this._extensionRunner?.hasHandlers("resources_discover")) {
             return;
         }
         const { skillPaths, promptPaths, themePaths } = await this._extensionRunner.emitResourcesDiscover(this._cwd, reason);
@@ -1726,7 +1716,7 @@ export class AgentSession {
                 this.sessionManager.appendCustomEntry(customType, data);
             },
             setSessionName: (name) => {
-                this.setSessionName(name);
+                this.sessionManager.appendSessionInfo(name);
             },
             getSessionName: () => {
                 return this.sessionManager.getSessionName();
@@ -1784,19 +1774,15 @@ export class AgentSession {
     _refreshToolRegistry(options) {
         const previousRegistryNames = new Set(this._toolRegistry.keys());
         const previousActiveToolNames = this.getActiveToolNames();
-        const allowedToolNames = this._allowedToolNames;
-        const isAllowedTool = (name) => !allowedToolNames || allowedToolNames.has(name);
-        const registeredTools = this._extensionRunner.getAllRegisteredTools();
+        const registeredTools = this._extensionRunner?.getAllRegisteredTools() ?? [];
         const allCustomTools = [
             ...registeredTools,
             ...this._customTools.map((definition) => ({
                 definition,
                 sourceInfo: createSyntheticSourceInfo(`<sdk:${definition.name}>`, { source: "sdk" }),
             })),
-        ].filter((tool) => isAllowedTool(tool.definition.name));
-        const definitionRegistry = new Map(Array.from(this._baseToolDefinitions.entries())
-            .filter(([name]) => isAllowedTool(name))
-            .map(([name, definition]) => [
+        ];
+        const definitionRegistry = new Map(Array.from(this._baseToolDefinitions.entries()).map(([name, definition]) => [
             name,
             {
                 definition,
@@ -1822,28 +1808,21 @@ export class AgentSession {
             return guidelines.length > 0 ? [definition.name, guidelines] : undefined;
         })
             .filter((entry) => entry !== undefined));
-        const runner = this._extensionRunner;
-        const wrappedExtensionTools = wrapRegisteredTools(allCustomTools, runner);
-        const wrappedBuiltInTools = wrapRegisteredTools(Array.from(this._baseToolDefinitions.values())
-            .filter((definition) => isAllowedTool(definition.name))
-            .map((definition) => ({
-            definition,
-            sourceInfo: createSyntheticSourceInfo(`<builtin:${definition.name}>`, { source: "builtin" }),
-        })), runner);
-        const toolRegistry = new Map(wrappedBuiltInTools.map((tool) => [tool.name, tool]));
+        const wrappedExtensionTools = this._extensionRunner
+            ? wrapRegisteredTools(allCustomTools, this._extensionRunner)
+            : [];
+        const toolRegistry = new Map(Array.from(this._baseToolDefinitions.values()).map((definition) => [
+            definition.name,
+            wrapToolDefinition(definition),
+        ]));
         for (const tool of wrappedExtensionTools) {
             toolRegistry.set(tool.name, tool);
         }
         this._toolRegistry = toolRegistry;
-        const nextActiveToolNames = (options?.activeToolNames ? [...options.activeToolNames] : [...previousActiveToolNames]).filter((name) => isAllowedTool(name));
-        if (allowedToolNames) {
-            for (const toolName of this._toolRegistry.keys()) {
-                if (allowedToolNames.has(toolName)) {
-                    nextActiveToolNames.push(toolName);
-                }
-            }
-        }
-        else if (options?.includeAllExtensionTools) {
+        const nextActiveToolNames = options?.activeToolNames
+            ? [...options.activeToolNames]
+            : [...previousActiveToolNames];
+        if (options?.includeAllExtensionTools) {
             for (const tool of wrappedExtensionTools) {
                 nextActiveToolNames.push(tool.name);
             }
@@ -1860,7 +1839,6 @@ export class AgentSession {
     _buildRuntime(options) {
         const autoResizeImages = this.settingsManager.getImageAutoResize();
         const shellCommandPrefix = this.settingsManager.getShellCommandPrefix();
-        const shellPath = this.settingsManager.getShellPath();
         const baseToolDefinitions = this._baseToolsOverride
             ? Object.fromEntries(Object.entries(this._baseToolsOverride).map(([name, tool]) => [
                 name,
@@ -1868,7 +1846,7 @@ export class AgentSession {
             ]))
             : createAllToolDefinitions(this._cwd, {
                 read: { autoResizeImages },
-                bash: { commandPrefix: shellCommandPrefix, shellPath },
+                bash: { commandPrefix: shellCommandPrefix },
             });
         this._baseToolDefinitions = new Map(Object.entries(baseToolDefinitions).map(([name, tool]) => [name, tool]));
         const extensionsResult = this._resourceLoader.getExtensions();
@@ -1877,12 +1855,19 @@ export class AgentSession {
                 extensionsResult.runtime.flagValues.set(name, value);
             }
         }
-        this._extensionRunner = new ExtensionRunner(extensionsResult.extensions, extensionsResult.runtime, this._cwd, this.sessionManager, this._modelRegistry);
+        const hasExtensions = extensionsResult.extensions.length > 0;
+        const hasCustomTools = this._customTools.length > 0;
+        this._extensionRunner =
+            hasExtensions || hasCustomTools
+                ? new ExtensionRunner(extensionsResult.extensions, extensionsResult.runtime, this._cwd, this.sessionManager, this._modelRegistry)
+                : undefined;
         if (this._extensionRunnerRef) {
             this._extensionRunnerRef.current = this._extensionRunner;
         }
-        this._bindExtensionCore(this._extensionRunner);
-        this._applyExtensionBindings(this._extensionRunner);
+        if (this._extensionRunner) {
+            this._bindExtensionCore(this._extensionRunner);
+            this._applyExtensionBindings(this._extensionRunner);
+        }
         const defaultActiveToolNames = this._baseToolsOverride
             ? Object.keys(this._baseToolsOverride)
             : ["read", "bash", "edit", "write"];
@@ -1893,8 +1878,8 @@ export class AgentSession {
         });
     }
     async reload() {
-        const previousFlagValues = this._extensionRunner.getFlagValues();
-        await emitSessionShutdownEvent(this._extensionRunner, { type: "session_shutdown", reason: "reload" });
+        const previousFlagValues = this._extensionRunner?.getFlagValues();
+        await this._extensionRunner?.emit({ type: "session_shutdown" });
         await this.settingsManager.reload();
         resetApiProviders();
         await this._resourceLoader.reload();
@@ -1907,7 +1892,7 @@ export class AgentSession {
             this._extensionCommandContextActions ||
             this._extensionShutdownHandler ||
             this._extensionErrorListener;
-        if (hasBindings) {
+        if (this._extensionRunner && hasBindings) {
             await this._extensionRunner.emit({ type: "session_start", reason: "reload" });
             await this.extendResourcesFromExtensions("reload");
         }
@@ -1927,8 +1912,8 @@ export class AgentSession {
         if (isContextOverflow(message, contextWindow))
             return false;
         const err = message.errorMessage;
-        // Match: overloaded_error, provider returned error, rate limit, 429, 500, 502, 503, 504, service unavailable, network/connection errors (including connection lost), WebSocket transport closes/errors, fetch failed, request ended without sending chunks, HTTP/2 closed before response, terminated, retry delay exceeded
-        return /overloaded|provider.?returned.?error|rate.?limit|too many requests|429|500|502|503|504|service.?unavailable|server.?error|internal.?error|network.?error|connection.?error|connection.?refused|connection.?lost|websocket.?closed|websocket.?error|other side closed|fetch failed|upstream.?connect|reset before headers|socket hang up|ended without|http2 request did not get a response|timed? out|timeout|terminated|retry delay/i.test(err);
+        // Match: overloaded_error, provider returned error, rate limit, 429, 500, 502, 503, 504, service unavailable, network/connection errors, fetch failed, request ended without sending chunks, terminated, retry delay exceeded
+        return /overloaded|provider.?returned.?error|rate.?limit|too many requests|429|500|502|503|504|service.?unavailable|server.?error|internal.?error|network.?error|connection.?error|connection.?refused|other side closed|fetch failed|upstream.?connect|reset before headers|socket hang up|ended without|timed? out|timeout|terminated|retry delay/i.test(err);
     }
     /**
      * Handle retryable errors with exponential backoff.
@@ -2049,10 +2034,9 @@ export class AgentSession {
         this._bashAbortController = new AbortController();
         // Apply command prefix if configured (e.g., "shopt -s expand_aliases" for alias support)
         const prefix = this.settingsManager.getShellCommandPrefix();
-        const shellPath = this.settingsManager.getShellPath();
         const resolvedCommand = prefix ? `${prefix}\n${command}` : command;
         try {
-            const result = await executeBashWithOperations(resolvedCommand, this.sessionManager.getCwd(), options?.operations ?? createLocalBashOperations({ shellPath }), {
+            const result = await executeBashWithOperations(resolvedCommand, this.sessionManager.getCwd(), options?.operations ?? createLocalBashOperations(), {
                 onChunk,
                 signal: this._bashAbortController.signal,
             });
@@ -2128,7 +2112,6 @@ export class AgentSession {
      */
     setSessionName(name) {
         this.sessionManager.appendSessionInfo(name);
-        this._emit({ type: "session_info_changed", name: this.sessionManager.getSessionName() });
     }
     // =========================================================================
     // Tree Navigation
@@ -2176,117 +2159,118 @@ export class AgentSession {
         };
         // Set up abort controller for summarization
         this._branchSummaryAbortController = new AbortController();
-        try {
-            let extensionSummary;
-            let fromExtension = false;
-            // Emit session_before_tree event
-            if (this._extensionRunner.hasHandlers("session_before_tree")) {
-                const result = (await this._extensionRunner.emit({
-                    type: "session_before_tree",
-                    preparation,
-                    signal: this._branchSummaryAbortController.signal,
-                }));
-                if (result?.cancel) {
-                    return { cancelled: true };
-                }
-                if (result?.summary && options.summarize) {
-                    extensionSummary = result.summary;
-                    fromExtension = true;
-                }
-                // Allow extensions to override instructions and label
-                if (result?.customInstructions !== undefined) {
-                    customInstructions = result.customInstructions;
-                }
-                if (result?.replaceInstructions !== undefined) {
-                    replaceInstructions = result.replaceInstructions;
-                }
-                if (result?.label !== undefined) {
-                    label = result.label;
-                }
+        let extensionSummary;
+        let fromExtension = false;
+        // Emit session_before_tree event
+        if (this._extensionRunner?.hasHandlers("session_before_tree")) {
+            const result = (await this._extensionRunner.emit({
+                type: "session_before_tree",
+                preparation,
+                signal: this._branchSummaryAbortController.signal,
+            }));
+            if (result?.cancel) {
+                return { cancelled: true };
             }
-            // Run default summarizer if needed
-            let summaryText;
-            let summaryDetails;
-            if (options.summarize && entriesToSummarize.length > 0 && !extensionSummary) {
-                const model = this.model;
-                const { apiKey, headers } = await this._getRequiredRequestAuth(model);
-                const branchSummarySettings = this.settingsManager.getBranchSummarySettings();
-                const result = await generateBranchSummary(entriesToSummarize, {
-                    model,
-                    apiKey,
-                    headers,
-                    signal: this._branchSummaryAbortController.signal,
-                    customInstructions,
-                    replaceInstructions,
-                    reserveTokens: branchSummarySettings.reserveTokens,
-                });
-                if (result.aborted) {
-                    return { cancelled: true, aborted: true };
-                }
-                if (result.error) {
-                    throw new Error(result.error);
-                }
-                summaryText = result.summary;
-                summaryDetails = {
-                    readFiles: result.readFiles || [],
-                    modifiedFiles: result.modifiedFiles || [],
-                };
+            if (result?.summary && options.summarize) {
+                extensionSummary = result.summary;
+                fromExtension = true;
             }
-            else if (extensionSummary) {
-                summaryText = extensionSummary.summary;
-                summaryDetails = extensionSummary.details;
+            // Allow extensions to override instructions and label
+            if (result?.customInstructions !== undefined) {
+                customInstructions = result.customInstructions;
             }
-            // Determine the new leaf position based on target type
-            let newLeafId;
-            let editorText;
-            if (targetEntry.type === "message" && targetEntry.message.role === "user") {
-                // User message: leaf = parent (null if root), text goes to editor
-                newLeafId = targetEntry.parentId;
-                editorText = this._extractUserMessageText(targetEntry.message.content);
+            if (result?.replaceInstructions !== undefined) {
+                replaceInstructions = result.replaceInstructions;
             }
-            else if (targetEntry.type === "custom_message") {
-                // Custom message: leaf = parent (null if root), text goes to editor
-                newLeafId = targetEntry.parentId;
-                editorText =
-                    typeof targetEntry.content === "string"
-                        ? targetEntry.content
-                        : targetEntry.content
-                            .filter((c) => c.type === "text")
-                            .map((c) => c.text)
-                            .join("");
+            if (result?.label !== undefined) {
+                label = result.label;
             }
-            else {
-                // Non-user message: leaf = selected node
-                newLeafId = targetId;
+        }
+        // Run default summarizer if needed
+        let summaryText;
+        let summaryDetails;
+        if (options.summarize && entriesToSummarize.length > 0 && !extensionSummary) {
+            const model = this.model;
+            const { apiKey, headers } = await this._getRequiredRequestAuth(model);
+            const branchSummarySettings = this.settingsManager.getBranchSummarySettings();
+            const result = await generateBranchSummary(entriesToSummarize, {
+                model,
+                apiKey,
+                headers,
+                signal: this._branchSummaryAbortController.signal,
+                customInstructions,
+                replaceInstructions,
+                reserveTokens: branchSummarySettings.reserveTokens,
+            });
+            this._branchSummaryAbortController = undefined;
+            if (result.aborted) {
+                return { cancelled: true, aborted: true };
             }
-            // Switch leaf (with or without summary)
-            // Summary is attached at the navigation target position (newLeafId), not the old branch
-            let summaryEntry;
-            if (summaryText) {
-                // Create summary at target position (can be null for root)
-                const summaryId = this.sessionManager.branchWithSummary(newLeafId, summaryText, summaryDetails, fromExtension);
-                summaryEntry = this.sessionManager.getEntry(summaryId);
-                // Attach label to the summary entry
-                if (label) {
-                    this.sessionManager.appendLabelChange(summaryId, label);
-                }
+            if (result.error) {
+                throw new Error(result.error);
             }
-            else if (newLeafId === null) {
-                // No summary, navigating to root - reset leaf
-                this.sessionManager.resetLeaf();
+            summaryText = result.summary;
+            summaryDetails = {
+                readFiles: result.readFiles || [],
+                modifiedFiles: result.modifiedFiles || [],
+            };
+        }
+        else if (extensionSummary) {
+            summaryText = extensionSummary.summary;
+            summaryDetails = extensionSummary.details;
+        }
+        // Determine the new leaf position based on target type
+        let newLeafId;
+        let editorText;
+        if (targetEntry.type === "message" && targetEntry.message.role === "user") {
+            // User message: leaf = parent (null if root), text goes to editor
+            newLeafId = targetEntry.parentId;
+            editorText = this._extractUserMessageText(targetEntry.message.content);
+        }
+        else if (targetEntry.type === "custom_message") {
+            // Custom message: leaf = parent (null if root), text goes to editor
+            newLeafId = targetEntry.parentId;
+            editorText =
+                typeof targetEntry.content === "string"
+                    ? targetEntry.content
+                    : targetEntry.content
+                        .filter((c) => c.type === "text")
+                        .map((c) => c.text)
+                        .join("");
+        }
+        else {
+            // Non-user message: leaf = selected node
+            newLeafId = targetId;
+        }
+        // Switch leaf (with or without summary)
+        // Summary is attached at the navigation target position (newLeafId), not the old branch
+        let summaryEntry;
+        if (summaryText) {
+            // Create summary at target position (can be null for root)
+            const summaryId = this.sessionManager.branchWithSummary(newLeafId, summaryText, summaryDetails, fromExtension);
+            summaryEntry = this.sessionManager.getEntry(summaryId);
+            // Attach label to the summary entry
+            if (label) {
+                this.sessionManager.appendLabelChange(summaryId, label);
             }
-            else {
-                // No summary, navigating to non-root
-                this.sessionManager.branch(newLeafId);
-            }
-            // Attach label to target entry when not summarizing (no summary entry to label)
-            if (label && !summaryText) {
-                this.sessionManager.appendLabelChange(targetId, label);
-            }
-            // Update agent state
-            const sessionContext = this.sessionManager.buildSessionContext();
-            this.agent.state.messages = sessionContext.messages;
-            // Emit session_tree event
+        }
+        else if (newLeafId === null) {
+            // No summary, navigating to root - reset leaf
+            this.sessionManager.resetLeaf();
+        }
+        else {
+            // No summary, navigating to non-root
+            this.sessionManager.branch(newLeafId);
+        }
+        // Attach label to target entry when not summarizing (no summary entry to label)
+        if (label && !summaryText) {
+            this.sessionManager.appendLabelChange(targetId, label);
+        }
+        // Update agent state
+        const sessionContext = this.sessionManager.buildSessionContext();
+        this.agent.state.messages = sessionContext.messages;
+        // Emit session_tree event
+        if (this._extensionRunner) {
             await this._extensionRunner.emit({
                 type: "session_tree",
                 newLeafId: this.sessionManager.getLeafId(),
@@ -2294,12 +2278,10 @@ export class AgentSession {
                 summaryEntry,
                 fromExtension: summaryText ? fromExtension : undefined,
             });
-            // Emit to custom tools
-            return { editorText, cancelled: false, summaryEntry };
         }
-        finally {
-            this._branchSummaryAbortController = undefined;
-        }
+        // Emit to custom tools
+        this._branchSummaryAbortController = undefined;
+        return { editorText, cancelled: false, summaryEntry };
     }
     /**
      * Get all user messages from session for fork selector.
@@ -2499,17 +2481,11 @@ export class AgentSession {
     // =========================================================================
     // Extension System
     // =========================================================================
-    createReplacedSessionContext() {
-        const context = Object.defineProperties({}, Object.getOwnPropertyDescriptors(this._extensionRunner.createCommandContext()));
-        context.sendMessage = (message, options) => this.sendCustomMessage(message, options);
-        context.sendUserMessage = (content, options) => this.sendUserMessage(content, options);
-        return context;
-    }
     /**
      * Check if extensions have handlers for a specific event type.
      */
     hasExtensionHandlers(eventType) {
-        return this._extensionRunner.hasHandlers(eventType);
+        return this._extensionRunner?.hasHandlers(eventType) ?? false;
     }
     /**
      * Get the extension runner (for setting UI context and error handlers).
