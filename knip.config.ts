@@ -90,6 +90,7 @@ const config = {
     bundledPluginFile("voice-call", "src/providers/index.ts"),
     bundledPluginFile("voice-call", "src/providers/tts-openai.ts"),
   ],
+  ignoreWorkspaces: ["vendor/pi-coding-agent"],
   workspaces: {
     ".": {
       entry: rootEntries,

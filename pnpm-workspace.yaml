@@ -3,6 +3,7 @@ packages:
   - ui
   - packages/*
   - extensions/*
+  - vendor/pi-coding-agent
 
 minimumReleaseAge: 2880
 

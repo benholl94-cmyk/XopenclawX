@@ -25,6 +25,53 @@ function isExactPinnedVersion(spec: string): boolean {
   return !spec.startsWith("^") && !spec.startsWith("~");
 }
 
+const LOCAL_REFERENCE_PREFIXES = ["file:", "link:", "portal:", "workspace:"] as const;
+
+function isLocalSpec(spec: string): boolean {
+  return LOCAL_REFERENCE_PREFIXES.some((prefix) => spec.startsWith(prefix));
+}
+
+function readNamedPackageVersion(dir: string, packageName: string): string | undefined {
+  const manifestPath = path.join(dir, "package.json");
+  if (!fs.existsSync(manifestPath)) {
+    return undefined;
+  }
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
+    name?: string;
+    version?: string;
+  };
+  if (manifest.name !== packageName || typeof manifest.version !== "string") {
+    return undefined;
+  }
+  return manifest.version;
+}
+
+function resolvePiVersion(packageName: string, spec: string): string | undefined {
+  // pnpm-audit-prod skips file:/link:/portal:/workspace: refs. Those pins stay
+  // aligned when the local package.json version matches the other exact pins.
+  if (spec.startsWith("file:") || spec.startsWith("link:")) {
+    const relativePath = spec.slice(spec.indexOf(":") + 1);
+    return readNamedPackageVersion(path.resolve(process.cwd(), relativePath), packageName);
+  }
+  if (!isLocalSpec(spec)) {
+    return spec;
+  }
+  const vendorDir = path.resolve(process.cwd(), "vendor");
+  if (!fs.existsSync(vendorDir)) {
+    return undefined;
+  }
+  for (const entry of fs.readdirSync(vendorDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const version = readNamedPackageVersion(path.join(vendorDir, entry.name), packageName);
+    if (version) {
+      return version;
+    }
+  }
+  return undefined;
+}
+
 function isPiOverrideKey(key: string): boolean {
   return key.startsWith("@mariozechner/pi-") || key.includes("@mariozechner/pi-");
 }
@@ -51,11 +98,21 @@ describe("pi package graph guardrails", () => {
       `Missing required root Pi dependencies: ${missing.join(", ") || "<none>"}. Mixed or incomplete Pi root dependencies create an unsupported package graph.`,
     );
 
-    const presentSpecs = specs.map((entry) => entry.spec);
-    const uniqueSpecs = [...new Set(presentSpecs)];
+    const resolved = specs.map((entry) => ({
+      ...entry,
+      version: resolvePiVersion(entry.name, entry.spec ?? ""),
+    }));
+    const unresolved = resolved
+      .filter((entry) => !entry.version)
+      .map((entry) => `${entry.name}=${entry.spec}`);
+    expectNoGraphViolations(
+      unresolved,
+      `Root Pi dependencies must resolve to one package version. Found: ${unresolved.join(", ") || "<none>"}.`,
+    );
+    const uniqueVersions = [...new Set(resolved.map((entry) => entry.version))];
     expect(
-      uniqueSpecs,
-      `Root Pi dependencies must stay aligned to one exact version. Found: ${specs.map((entry) => `${entry.name}=${entry.spec}`).join(", ")}. Mixed Pi versions create an unsupported package graph.`,
+      uniqueVersions,
+      `Root Pi dependencies must stay aligned to one exact version. Found: ${resolved.map((entry) => `${entry.name}=${entry.spec} -> ${entry.version}`).join(", ")}. Mixed Pi versions create an unsupported package graph.`,
     ).toHaveLength(1);
 
     const inexact = specs.filter((entry) => !isExactPinnedVersion(entry.spec));
