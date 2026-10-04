@@ -1,0 +1,53 @@
+name: Wrap Guard (self-healing)
+
+# Global-first autonomous repair lane: detects and repairs the exact
+# line-wrap corruption class (newline injected at ~2000-byte boundaries
+# mid-token) that length-capped fetch/push pipelines can introduce.
+# When repairs are made, this workflow commits them so the corrupted
+# state never reaches other CI lanes or the default branch history.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wrap-guard-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 2
+
+      - name: Detect and repair wrap artifacts
+        id: guard
+        run: |
+          set +e
+          node scripts/wrap-guard.mjs HEAD~1
+          code=$?
+          set -e
+          if [ "$code" -eq 3 ]; then
+            echo "repairs=true" >> "$GITHUB_OUTPUT"
+          elif [ "$code" -eq 0 ]; then
+            echo "repairs=false" >> "$GITHUB_OUTPUT"
+          else
+            exit "$code"
+          fi
+
+      - name: Commit repairs
+        if: steps.guard.outputs.repairs == 'true'
+        run: |
+          git config user.name "wrap-guard[bot]"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(wrap-guard): auto-repair line-wrap artifacts"
+          git push
