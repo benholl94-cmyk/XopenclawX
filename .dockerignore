@@ -70,3 +70,7 @@ vendor/
 !vendor/a2ui/renderers/
 !vendor/a2ui/renderers/lit/
 !vendor/a2ui/renderers/lit/**
+!vendor/pi-coding-agent/
+!vendor/pi-coding-agent/**
+!vendor/extract-zip/
+!vendor/extract-zip/**
