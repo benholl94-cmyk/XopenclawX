@@ -34,14 +34,12 @@ COPY ${OPENCLAW_BUNDLED_PLUGIN_DIR} /tmp/${OPENCLAW_BUNDLED_PLUGIN_DIR}
 RUN mkdir -p /out && \
     for ext in $OPENCLAW_EXTENSIONS; do \
       if [ -f "/tmp/${OPENCLAW_BUNDLED_PLUGIN_DIR}/$ext/package.json" ]; then \
-        mkdir -p "/o
-
-ut/$ext" && \
+        mkdir -p "/out/$ext" && \
         cp "/tmp/${OPENCLAW_BUNDLED_PLUGIN_DIR}/$ext/package.json" "/out/$ext/package.json"; \
       fi; \
     done
 
-# ── Stage 2: Build ──────────────────────────────────────────────
+# ââ Stage 2: Build ââââââââââââââââââââââââââââââââââââââââââââââ
 FROM ${OPENCLAW_NODE_BOOKWORM_IMAGE} AS build
 ARG OPENCLAW_BUNDLED_PLUGIN_DIR
 
@@ -83,14 +81,12 @@ RUN --mount=type=cache,id=openclaw-pnpm-store,target=/root/.local/share/pnpm/sto
 # pnpm v10+ may append peer-resolution hashes to virtual-store folder names; do not hardcode `.pnpm/...`
 # paths. Fail fast here if the Matrix native binding did not materialize after install.
 RUN echo "==> Verifying critical native addons..." && \
-    find /app/node_mod
-ules -name "matrix-sdk-crypto*.node" 2>/dev/null | grep -q . || \
+    find /app/node_modules -name "matrix-sdk-crypto*.node" 2>/dev/null | grep -q . || \
     (echo "ERROR: matrix-sdk-crypto native addon missing (pnpm install may have silently failed on this arch)" >&2 && exit 1)
 
 COPY . .
 
-# Normalize extension paths now so runtime COP
-Y preserves safe modes
+# Normalize extension paths now so runtime COPY preserves safe modes
 # without adding a second full extensions layer.
 RUN for dir in /app/${OPENCLAW_BUNDLED_PLUGIN_DIR} /app/.agent /app/.agents; do \
       if [ -d "$dir" ]; then \
@@ -126,17 +122,15 @@ ARG OPENCLAW_BUNDLED_PLUGIN_DIR
 # copy.
 RUN printf 'packages:\n  - .\n  - ui\n' > /tmp/pnpm-workspace.runtime.yaml && \
     for ext in $OPENCLAW_EXTENSIONS; do \
-      printf '  - %s/%s\n' "$OPENCLAW_BUNDLED_PLUGIN_DIR" "$ext" >> /tmp/pnpm-workspace.run
-time.yaml; \
+      printf '  - %s/%s\n' "$OPENCLAW_BUNDLED_PLUGIN_DIR" "$ext" >> /tmp/pnpm-workspace.runtime.yaml; \
     done && \
     printf '  - vendor/pi-coding-agent\n' >> /tmp/pnpm-workspace.runtime.yaml && \
     cp /tmp/pnpm-workspace.runtime.yaml pnpm-workspace.yaml && \
     CI=true NPM_CONFIG_FROZEN_LOCKFILE=false pnpm prune --prod && \
     node scripts/postinstall-bundled-plugins.mjs && \
-    find dist -type f \( -name '*.d.
-ts' -o -name '*.d.mts' -o -name '*.d.cts' -o -name '*.map' \) -delete
+    find dist -type f \( -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' -o -name '*.map' \) -delete
 
-# ── Runtime base images ─────────────────────────────────────────
+# ââ Runtime base images âââââââââââââââââââââââââââââââââââââââââ
 FROM ${OPENCLAW_NODE_BOOKWORM_IMAGE} AS base-default
 ARG OPENCLAW_NODE_BOOKWORM_DIGEST
 LABEL org.opencontainers.image.base.name="docker.io/library/node:24-bookworm" \
@@ -147,7 +141,7 @@ ARG OPENCLAW_NODE_BOOKWORM_SLIM_DIGEST
 LABEL org.opencontainers.image.base.name="docker.io/library/node:24-bookworm-slim" \
   org.opencontainers.image.base.digest="${OPENCLAW_NODE_BOOKWORM_SLIM_DIGEST}"
 
-# ── Stage 3: Runtime ────────────────────────────────────────────
+# ââ Stage 3: Runtime ââââââââââââââââââââââââââââââââââââââââââââ
 FROM base-${OPENCLAW_VARIANT}
 ARG OPENCLAW_VARIANT
 ARG OPENCLAW_BUNDLED_PLUGIN_DIR
@@ -168,14 +162,12 @@ WORKDIR /app
 
 # Install system utilities present in bookworm but missing in bookworm-slim.
 # On the full bookworm image these are already installed (apt-get is a no-op).
-# Smoke workflows can opt out of distro u
-pgrades to cut repeated CI time while
+# Smoke workflows can opt out of distro upgrades to cut repeated CI time while
 # keeping the default runtime image behavior unchanged.
 RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,id=openclaw-bookworm-apt-lists,target=/var/lib/apt,sharing=locked \
     apt-get update && \
-    if [ "${OPENCLAW_DOCKER_APT_UPGRADE}" != "0" ]; then
- \
+    if [ "${OPENCLAW_DOCKER_APT_UPGRADE}" != "0" ]; then \
       DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends; \
     fi && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -212,13 +204,11 @@ RUN install -d -m 0755 "$COREPACK_HOME" && \
 # Install additional system packages needed by your skills or extensions.
 # Example: docker build --build-arg OPENCLAW_DOCKER_APT_PACKAGES="python3 wget" .
 ARG OPENCLAW_DOCKER_APT_PACKAGES=""
-RUN --m
-ount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,sharing=locked \
+RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,id=openclaw-bookworm-apt-lists,target=/var/lib/apt,sharing=locked \
     if [ -n "$OPENCLAW_DOCKER_APT_PACKAGES" ]; then \
       apt-get update && \
-      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $OPENCLAW_DOCKER_APT_P
-ACKAGES; \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $OPENCLAW_DOCKER_APT_PACKAGES; \
     fi
 
 # Optionally install Chromium and Xvfb for browser automation.
@@ -239,7 +229,7 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
 
 # Optionally install Docker CLI for sandbox container management.
 # Build with: docker build --build-arg OPENCLAW_INSTALL_DOCKER_CLI=1 ...
-# Adds ~50MB. Only the CLI is installed — no Docker daemon.
+# Adds ~50MB. Only the CLI is installed â no Docker daemon.
 # Required for agents.defaults.sandbox to function in Docker deployments.
 ARG OPENCLAW_INSTALL_DOCKER_CLI=""
 ARG OPENCLAW_DOCKER_GPG_FINGERPRINT="9DC858229FC7DD38854AE2D88D81803C0EBFCD88"
@@ -247,14 +237,12 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
     --mount=type=cache,id=openclaw-bookworm-apt-lists,target=/var/lib/apt,sharing=locked \
     if [ -n "$OPENCLAW_INSTALL_DOCKER_CLI" ]; then \
       apt-get update && \
-      DEBIAN_FRONTEND=noninterac
-tive apt-get install -y --no-install-recommends \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg && \
       install -m 0755 -d /etc/apt/keyrings && \
       # Verify Docker apt signing key fingerprint before trusting it as a root key.
       # Update OPENCLAW_DOCKER_GPG_FINGERPRINT when Docker rotates release keys.
-      curl -fsSL https://download.docker.com/linux/debian
-/gpg -o /tmp/docker.gpg.asc && \
+      curl -fsSL https://download.docker.com/linux/debian/gpg -o /tmp/docker.gpg.asc && \
       expected_fingerprint="$(printf '%s' "$OPENCLAW_DOCKER_GPG_FINGERPRINT" | tr '[:lower:]' '[:upper:]' | tr -d '[:space:]')" && \
       actual_fingerprint="$(gpg --batch --show-keys --with-colons /tmp/docker.gpg.asc | awk -F: '$1 == "fpr" { print toupper($10); exit }')" && \
       if [ -z "$actual_fingerprint" ] || [ "$actual_fingerprint" != "$expected_fingerprint" ]; then \
@@ -285,8 +273,7 @@ USER node
 # Start gateway server with default config.
 # Binds to loopback (127.0.0.1) by default for security.
 #
-# IMPORTANT: With Docker bridg
-e networking (-p 18789:18789), loopback bind
+# IMPORTANT: With Docker bridge networking (-p 18789:18789), loopback bind
 # makes the gateway unreachable from the host. Either:
 #   - Use --network host, OR
 #   - Override --bind to "lan" (0.0.0.0) and set auth credentials
@@ -294,8 +281,7 @@ e networking (-p 18789:18789), loopback bind
 # Built-in probe endpoints for container health checks:
 #   - GET /healthz (liveness) and GET /readyz (readiness)
 #   - aliases: /health and /ready
-# For external a
-ccess from host/ingress, override bind to "lan" and set auth.
+# For external access from host/ingress, override bind to "lan" and set auth.
 HEALTHCHECK --interval=3m --timeout=10s --start-period=15s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "openclaw.mjs", "gateway", "--allow-unconfigured"]
