@@ -39,8 +39,7 @@ function asAppendMessage(message: unknown): AppendMessage {
   return message as AppendMessage;
 }
 
-function getBranchMessages(sessionManager: S
-essionManager): AgentMessage[] {
+function getBranchMessages(sessionManager: SessionManager): AgentMessage[] {
   return sessionManager
     .getBranch()
     .filter((entry) => entry.type === "message")
@@ -120,7 +119,6 @@ function createExecRewriteSession() {
   };
 }
 
-
 function createToolResultReplacement(toolName: string, text: string, timestamp: number) {
   return {
     role: "toolResult",
@@ -184,8 +182,7 @@ describe("rewriteTranscriptEntriesInSessionManager", () => {
   });
 
   it("preserves active-branch labels after rewritten entries are re-appended", () => {
-    const { sessio
-nManager, toolResultEntryId } = createReadRewriteSession();
+    const { sessionManager, toolResultEntryId } = createReadRewriteSession();
     const summaryEntry = findAssistantEntryByText(sessionManager, "summarized");
     expect(summaryEntry).toBeDefined();
     sessionManager.appendLabelChange(summaryEntry!.id, "bookmark");
@@ -237,8 +234,7 @@ nManager, toolResultEntryId } = createReadRewriteSession();
     const compactionEntry = branch.find((entry) => entry.type === "compaction");
 
     expect(keptAssistantEntry).toBeDefined();
-    expect(com
-pactionEntry).toBeDefined();
+    expect(compactionEntry).toBeDefined();
     expect(compactionEntry?.firstKeptEntryId).toBe(keptAssistantEntry?.id);
     expect(compactionEntry?.firstKeptEntryId).not.toBe(keptAssistantEntryId);
   });
@@ -291,8 +287,7 @@ describe("rewriteTranscriptEntriesInSessionFile", () => {
       .spyOn(FreshSessionManager, "open")
       .mockReturnValue(sessionManager as unknown as ReturnType<typeof FreshSessionManager.open>);
     const listener = vi.fn();
-    const cleanup = onSessionTra
-nscriptUpdate(listener);
+    const cleanup = onSessionTranscriptUpdate(listener);
 
     try {
       const result = await rewriteTranscriptEntriesInSessionFile({
