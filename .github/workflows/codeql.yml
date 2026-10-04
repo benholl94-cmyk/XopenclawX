@@ -148,8 +148,7 @@ jobs:
 
       - name: Autobuild
         if: matrix.needs_autobuild
-        uses: github/codeql-actio
-n/autobuild@b25d0ebf40e5b63ee81e1bd6e5d2a12b7c2aeb61 # v4
+        uses: github/codeql-action/autobuild@b25d0ebf40e5b63ee81e1bd6e5d2a12b7c2aeb61 # v4
 
       - name: Build Android for CodeQL
         if: matrix.language == 'java-kotlin'
