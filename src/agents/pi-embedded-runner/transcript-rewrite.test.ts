@@ -39,7 +39,8 @@ function asAppendMessage(message: unknown): AppendMessage {
   return message as AppendMessage;
 }
 
-function getBranchMessages(sessionManager: SessionManager): AgentMessage[] {
+function getBranchMessages(sessionManager: S
+essionManager): AgentMessage[] {
   return sessionManager
     .getBranch()
     .filter((entry) => entry.type === "message")
@@ -119,6 +120,7 @@ function createExecRewriteSession() {
   };
 }
 
+
 function createToolResultReplacement(toolName: string, text: string, timestamp: number) {
   return {
     role: "toolResult",
@@ -182,7 +184,8 @@ describe("rewriteTranscriptEntriesInSessionManager", () => {
   });
 
   it("preserves active-branch labels after rewritten entries are re-appended", () => {
-    const { sessionManager, toolResultEntryId } = createReadRewriteSession();
+    const { sessio
+nManager, toolResultEntryId } = createReadRewriteSession();
     const summaryEntry = findAssistantEntryByText(sessionManager, "summarized");
     expect(summaryEntry).toBeDefined();
     sessionManager.appendLabelChange(summaryEntry!.id, "bookmark");
@@ -234,7 +237,8 @@ describe("rewriteTranscriptEntriesInSessionManager", () => {
     const compactionEntry = branch.find((entry) => entry.type === "compaction");
 
     expect(keptAssistantEntry).toBeDefined();
-    expect(compactionEntry).toBeDefined();
+    expect(com
+pactionEntry).toBeDefined();
     expect(compactionEntry?.firstKeptEntryId).toBe(keptAssistantEntry?.id);
     expect(compactionEntry?.firstKeptEntryId).not.toBe(keptAssistantEntryId);
   });
@@ -279,14 +283,16 @@ describe("rewriteTranscriptEntriesInSessionManager", () => {
 
 describe("rewriteTranscriptEntriesInSessionFile", () => {
   it("emits transcript updates when the active branch changes", async () => {
+    const { SessionManager: FreshSessionManager } = await import("@mariozechner/pi-coding-agent");
     const sessionFile = "/tmp/session.jsonl";
     const { sessionManager, toolResultEntryId } = createExecRewriteSession();
 
     const openSpy = vi
-      .spyOn(SessionManager, "open")
-      .mockReturnValue(sessionManager as unknown as ReturnType<typeof SessionManager.open>);
+      .spyOn(FreshSessionManager, "open")
+      .mockReturnValue(sessionManager as unknown as ReturnType<typeof FreshSessionManager.open>);
     const listener = vi.fn();
-    const cleanup = onSessionTranscriptUpdate(listener);
+    const cleanup = onSessionTra
+nscriptUpdate(listener);
 
     try {
       const result = await rewriteTranscriptEntriesInSessionFile({
