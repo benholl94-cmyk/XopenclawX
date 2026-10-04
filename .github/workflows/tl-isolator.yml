@@ -1,0 +1,38 @@
+name: TL-Isolator Selftest
+
+# Production lane for the token-limit isolation module: every push proves
+# G1 (seal), G2 (fragment transport) and G3 (atomic write) in CI, so a
+# regression in the isolation guarantees fails loudly instead of silently.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/tl-isolator/**"
+      - ".github/workflows/tl-isolator.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tl-isolator-${{ github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Run isolation selftest
+        run: node scripts/tl-isolator/tl-isolator.mjs selftest
