@@ -25,6 +25,11 @@ const formatExts = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json
 const formatIgnoredPaths = new Set(["src/canvas-host/a2ui/a2ui.bundle.js"]);
 
 const shouldSelect = (filePath) => {
+  const normalized = filePath.replaceAll("\\", "/");
+  // Published Pi vendors are third-party snapshots; do not oxlint/oxfmt them.
+  if (normalized.startsWith("vendor/pi-")) {
+    return false;
+  }
   const ext = path.extname(filePath).toLowerCase();
   if (mode === "lint") {
     return lintExts.has(ext);
