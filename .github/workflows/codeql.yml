@@ -52,24 +52,6 @@ jobs:
             needs_manual_build: false
             needs_autobuild: false
             config_file: ""
-          - language: java-kotlin
-            runs_on: ubuntu-latest
-            needs_node: false
-            needs_python: false
-            needs_java: true
-            needs_swift_tools: false
-            needs_manual_build: true
-            needs_autobuild: false
-            config_file: ""
-          - language: swift
-            runs_on: macos-15
-            needs_node: false
-            needs_python: false
-            needs_java: false
-            needs_swift_tools: true
-            needs_manual_build: true
-            needs_autobuild: false
-            config_file: ""
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -166,7 +148,8 @@ jobs:
 
       - name: Autobuild
         if: matrix.needs_autobuild
-        uses: github/codeql-action/autobuild@b25d0ebf40e5b63ee81e1bd6e5d2a12b7c2aeb61 # v4
+        uses: github/codeql-actio
+n/autobuild@b25d0ebf40e5b63ee81e1bd6e5d2a12b7c2aeb61 # v4
 
       - name: Build Android for CodeQL
         if: matrix.language == 'java-kotlin'
