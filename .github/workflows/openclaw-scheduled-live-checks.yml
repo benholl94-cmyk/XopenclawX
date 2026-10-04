@@ -27,7 +27,9 @@ jobs:
       include_repo_e2e: true
       include_release_path_suites: false
       include_openwebui: true
-      include_live_suites: true
+      # Live-provider suites require upstream-only API secrets that are not
+      # configured on this fork; run the secret-free repo E2E lanes instead.
+      include_live_suites: false
     secrets:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
@@ -50,7 +52,8 @@ jobs:
       OPENCLAW_LIVE_SETUP_TOKEN_MODEL: ${{ secrets.OPENCLAW_LIVE_SETUP_TOKEN_MODEL }}
       OPENCLAW_LIVE_SETUP_TOKEN_PROFILE: ${{ secrets.OPENCLAW_LIVE_SETUP_TOKEN_PROFILE }}
       OPENCLAW_LIVE_SETUP_TOKEN_VALUE: ${{ secrets.OPENCLAW_LIVE_SETUP_TOKEN_VALUE }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMI
+NI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
