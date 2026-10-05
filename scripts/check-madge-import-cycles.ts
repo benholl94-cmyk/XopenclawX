@@ -5,6 +5,10 @@ import madge from "madge";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const scanRoots = ["src", "extensions", "ui"] as const;
+// Workspace-vendored packages ship .d.ts barrels with internal cycles that are
+// outside our source graph (same spirit as check-import-cycles ignoring vendor/
+// node_modules/dist). Keep scanning src/extensions/ui; do not chase vendor.
+const excludeRegExp = ["(^|/)vendor/"];
 
 function normalizeRepoPath(filePath: string): string {
   return filePath.split(path.sep).join("/");
@@ -15,6 +19,7 @@ async function main(): Promise<number> {
     baseDir: repoRoot,
     fileExtensions: ["ts"],
     tsConfig: path.join(repoRoot, "tsconfig.json"),
+    excludeRegExp,
   });
   const cycles = result.circular().map((cycle) => cycle.map((file) => normalizeRepoPath(file)));
 
