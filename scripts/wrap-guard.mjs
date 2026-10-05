@@ -27,11 +27,13 @@ const WRAP_MODULO_TOLERANCE = 2;
 const WORD = /[A-Za-z0-9_/.-]/;
 
 function changedFiles(baseRef) {
-  const out = execSync(
-    `git diff --name-only --diff-filter=ACM ${baseRef}..HEAD`,
-    { encoding: "utf8" },
-  );
-  return out.split("\n").map((s) => s.trim()).filter(Boolean);
+  const out = execSync(`git diff --name-only --diff-filter=ACM ${baseRef}..HEAD`, {
+    encoding: "utf8",
+  });
+  return out
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 function findWrapArtifacts(content) {
@@ -44,14 +46,9 @@ function findWrapArtifacts(content) {
     const next = lines[i + 1].at(0) ?? "";
     const nearBoundary =
       Math.abs(offset % WRAP_MODULO) <= WRAP_MODULO_TOLERANCE ||
-      Math.abs(offset % WRAP_MODULO - WRAP_MODULO) <= WRAP_MODULO_TOLERANCE;
+      Math.abs((offset % WRAP_MODULO) - WRAP_MODULO) <= WRAP_MODULO_TOLERANCE;
     const nextLineIndented = /^\s/.test(lines[i + 1]);
-    if (
-      nearBoundary &&
-      WORD.test(prev) &&
-      WORD.test(next) &&
-      !nextLineIndented
-    ) {
+    if (nearBoundary && WORD.test(prev) && WORD.test(next) && !nextLineIndented) {
       artifacts.push({ lineIndex: i, offset });
     }
   }
@@ -61,7 +58,7 @@ function findWrapArtifacts(content) {
 function repair(content, artifacts) {
   const lines = content.split("\n");
   // join from the last artifact backwards so indices stay valid
-  for (const a of [...artifacts].reverse()) {
+  for (const a of [...artifacts].toReversed()) {
     lines[a.lineIndex] = lines[a.lineIndex] + lines[a.lineIndex + 1];
     lines.splice(a.lineIndex + 1, 1);
   }
@@ -79,9 +76,13 @@ function main() {
     } catch {
       continue;
     }
-    if (content.includes("\u0000")) continue; // skip binary files
+    if (content.includes("\u0000")) {
+      continue; // skip binary files
+    }
     const artifacts = findWrapArtifacts(content);
-    if (artifacts.length === 0) continue;
+    if (artifacts.length === 0) {
+      continue;
+    }
     const fixed = repair(content, artifacts);
     writeFileSync(file, fixed, "utf8");
     repaired.push({ file, count: artifacts.length });

@@ -57,8 +57,10 @@ export function fragment(content, max = 1500) {
   const text = String(content);
   const size = Math.max(64, Math.floor(max));
   const parts = [];
-  for (let i = 0; i < text.length; i += size) parts.push(text.slice(i, i + size));
-  const { digest, length } = seal(text);
+  for (let i = 0; i < text.length; i += size) {
+    parts.push(text.slice(i, i + size));
+  }
+  const { digest } = seal(text);
   return parts.map((body, index) => ({
     tli: TL_ISOLATOR_VERSION,
     digest,
@@ -81,13 +83,9 @@ export function reassemble(fragments) {
   }
   const total = first.total;
   if (fragments.length !== total) {
-    throw new Error(
-      `tl-isolator: expected ${total} fragments, received ${fragments.length}`,
-    );
+    throw new Error(`tl-isolator: expected ${total} fragments, received ${fragments.length}`);
   }
-  const ordered = fragments
-    .slice()
-    .sort((a, b) => a.index - b.index);
+  const ordered = fragments.slice().toSorted((a, b) => a.index - b.index);
   ordered.forEach((f, i) => {
     if (f.index !== i) {
       throw new Error(`tl-isolator: fragment gap at position ${i}`);
@@ -112,14 +110,8 @@ export function detectWrapArtifacts(content) {
     const prev = lines[i].at(-1) ?? "";
     const next = lines[i + 1].at(0) ?? "";
     const mod = offset % WRAP_MODULO;
-    const nearBoundary =
-      mod <= WRAP_TOLERANCE || mod >= WRAP_MODULO - WRAP_TOLERANCE;
-    if (
-      nearBoundary &&
-      WORD_CHAR.test(prev) &&
-      WORD_CHAR.test(next) &&
-      !/^\s/.test(lines[i + 1])
-    ) {
+    const nearBoundary = mod <= WRAP_TOLERANCE || mod >= WRAP_MODULO - WRAP_TOLERANCE;
+    if (nearBoundary && WORD_CHAR.test(prev) && WORD_CHAR.test(next) && !/^\s/.test(lines[i + 1])) {
       artifacts.push({ lineIndex: i, byteOffset: offset });
     }
   }
@@ -156,11 +148,13 @@ export function selfTest() {
   // G1
   const payload = "A".repeat(4500) + " codeql-action/autobuild " + "B".repeat(4500);
   const s = seal(payload);
-  results.g1_seal = /^[a-f0-9]{64}$/.test(s.digest) && s.length === Buffer.byteLength(payload, "utf8");
+  results.g1_seal =
+    /^[a-f0-9]{64}$/.test(s.digest) && s.length === Buffer.byteLength(payload, "utf8");
   // G2 roundtrip
   const frags = fragment(payload);
   const round = reassemble(frags);
-  results.g2_roundtrip = round === payload && frags.every((f) => Buffer.byteLength(f.body, "utf8") < WRAP_MODULO);
+  results.g2_roundtrip =
+    round === payload && frags.every((f) => Buffer.byteLength(f.body, "utf8") < WRAP_MODULO);
   // G2 rejection on tamper
   let tamperRejected = false;
   try {
@@ -180,16 +174,16 @@ export function selfTest() {
   }
   results.g2_gap_rejected = gapRejected;
   // detector
-  const corrupted = "x".repeat(1999) + "codeql-actio" + "\n" + "n/autobuild" + "y".repeat(100);
+  const corrupted = "x".repeat(1999) + "codeql-actio\nn/autobuild" + "y".repeat(100);
   results.detector = detectWrapArtifacts(corrupted).length === 1;
   // G3 happy path (temp dir)
   const dir = `${process.env.RUNNER_TEMP ?? process.env.TMPDIR ?? "/tmp"}/tli-selftest`;
   const target = `${dir}/artifact.txt`;
   const w = atomicWrite(target, payload, { expectDigest: s.digest });
-  results.g3_atomic_ok = w.ok === true;
+  results.g3_atomic_ok = w.ok;
   // G3 digest mismatch refusal
   const w2 = atomicWrite(`${dir}/refused.txt`, payload, { expectDigest: "deadbeef" });
-  results.g3_mismatch_refused = w2.ok === false && w2.reason === "digest-mismatch";
+  results.g3_mismatch_refused = !w2.ok && w2.reason === "digest-mismatch";
   return results;
 }
 
@@ -197,7 +191,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const mode = process.argv[2] ?? "selftest";
   if (mode === "selftest") {
     const results = selfTest();
-    const failed = Object.entries(results).filter(([, v]) => v !== true);
+    const failed = Object.entries(results).filter(([, v]) => !v);
     console.log(JSON.stringify({ version: TL_ISOLATOR_VERSION, results }, null, 2));
     process.exit(failed.length === 0 ? 0 : 4);
   }
