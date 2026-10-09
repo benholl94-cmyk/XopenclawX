@@ -1378,8 +1378,26 @@ jobs:
           persist-credentials: false
           submodules: false
 
-      - name: Install XcodeGen / SwiftLint / SwiftFormat
-        run: brew install xcodegen swiftlint swiftformat
+      - name: Install XcodeGen / SwiftLint
+        run: brew install xcodegen swiftlint
+
+      # Pin SwiftFormat: 0.62.0+ enables new default rules (wrapIfStatementBodies,
+      # redundantSwiftUIGroup, ...) that fail lint on the current sources.
+      - name: Install SwiftFormat (pinned)
+        env:
+          SWIFTFORMAT_VERSION: "0.61.1"
+          SWIFTFORMAT_SHA256: "b990400779aceb7d7020796eb9ba814d4480543f671d38fc0ff48cb72f04c584"
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/swiftformat-$SWIFTFORMAT_VERSION"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 -o "$dir/swiftformat.zip" \
+            "https://github.com/nicklockwood/SwiftFormat/releases/download/$SWIFTFORMAT_VERSION/swiftformat.zip"
+          echo "$SWIFTFORMAT_SHA256  $dir/swiftformat.zip" | shasum -a 256 -c -
+          unzip -oq "$dir/swiftformat.zip" -d "$dir"
+          chmod +x "$dir/swiftformat"
+          echo "$dir" >> "$GITHUB_PATH"
+          "$dir/swiftformat" --version
 
       - name: Cache SwiftPM
         uses: actions/cache@v5
@@ -1422,6 +1440,7 @@ jobs:
       - name: Swift lint
         run: |
           swiftlint --config .swiftlint.yml
+          swiftformat --version
           swiftformat --lint apps/macos/Sources --config .swiftformat
 
       - name: Swift build (release)
